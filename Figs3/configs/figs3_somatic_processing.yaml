@@ -1,0 +1,89 @@
+# Figs3: Somatic-cell processing configuration (standalone)
+
+out_dir: "results/Figs3/somatic_processing"
+prefix: "somatic"
+
+# Input groups (each group can contain multiple RDS to be merged with add.cell.ids)
+# Provide QC-processed Seurat objects here.
+groups:
+  - name: "PD14"
+    sample_label: "P14"
+    items:
+      - id: "PD14-1"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD14/PD14_1/PD14_1.qc_processed.rds"
+      - id: "PD14-2"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD14/PD14_2/PD14_2.qc_processed.rds"
+
+  - name: "PD21"
+    sample_label: "P21"
+    items:
+      - id: "PD21-1"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD21/PD21_1/PD21_1_no_doublets.rds"
+      - id: "PD21-3"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD21/PD21_3/PD21_3_no_doublets.rds"
+
+  - name: "PD49"
+    sample_label: "P49"
+    items:
+      - id: "PD49-1"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD49/PD49_1/PD49_1.qc_processed.rds"
+      - id: "PD49-2"
+        rds: "/data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD49/PD49_2/PD49_2.qc_processed.rds"
+
+# Feature selection
+exclude_regex: "^(Rp|mt)"
+nfeatures_round1: 2000
+nfeatures_round2: 2000
+
+# Optional manual exclude genes (leave empty if not used)
+manual_exclude_genes_round1: []
+manual_exclude_genes_round2: []
+
+# Harmony + clustering parameters
+pipeline_round1:
+  harmony_group: "orig.ident"
+  pca_dims: 30
+  neighbors_dim_max: 30
+  umap_dim_max: 30
+  cluster_resolution: 1.0
+  theta: 1.5
+  lambda: 1.5
+  sigma: 0.05
+
+pipeline_round2:
+  harmony_group: "orig.ident"
+  pca_dims: 40
+  neighbors_dim_max: 40
+  umap_dim_max: 40
+  cluster_resolution: 1.0
+  theta: 1.5
+  lambda: 1.5
+  sigma: 0.03
+
+# Cluster filtering (as in your original script)
+exclude_clusters_round1: ["3", "14"]     # Low-quality + RBC
+exclude_clusters_round2: ["25", "12"]    # Low-quality + Oocyte
+
+# Outputs
+out_round1_rds: "results/Figs3/somatic_processing/somatic.round1.rds"
+out_final_rds: "results/Figs3/somatic_processing/somatic.final.rds"
+
+# Cluster -> celltype mapping (final annotation)
+# (Remove/adjust cluster IDs if your clustering changes.)
+celltype_map:
+  GC_Preantral: ["13", "0"]
+  GC_Antral_Mitotic: ["9"]
+  GC_Antral_Mural: ["5", "4"]
+  GC_Atretic: ["2"]
+  MC_Early_theca: ["7", "8", "16"]
+  MC_Myoid_theca: ["3"]
+  MC_Steroidogenic_theca: ["10", "14"]
+  MC_Fibroblast_like_stroma: ["11", "6"]
+  MC_Steroidogenic_like_stroma: ["1"]
+  Vascular_Endothelial: ["15"]
+  Lymphatic_Endothelial: ["24"]
+  Epithelial: ["22"]
+  Immune: ["17", "21", "20"]
+  Luteal_regressing: ["23"]
+  Luteinizing_mural: ["18"]
+  Pericyte: ["19"]

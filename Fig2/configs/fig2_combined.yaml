@@ -1,0 +1,39 @@
+figure: fig2
+modules:
+  fig2_harmony:
+    rds_dir: /data/work/Final/oocyte/orignalRDS
+    out: obj_oo.rds
+    pattern: \.rds$
+    seed: 1
+    nfeatures_integrate: 1000
+    sct_vfeatures_n: 2000
+    exclude_regex: ^(Rp|mt)
+    exclude_genes:
+    - Gm42418
+    - Lars2
+    - Hexb
+    - Camk1d
+    - Cmss1
+    - Cdk8
+    - Gm15564
+    - AY036118
+    - Zc3h7a
+    - Gphn
+    - Gm48099
+    - Gm26561
+    - Il31ra
+    - Gm19951
+    - Cd44
+    - Gm10076
+    dims_pass1: '1:20'
+    res_pass1: 1
+    remove_clusters:
+    - 8
+    - 9
+    harmony_vars_pass1:
+    - sample
+    dims_pass2: '1:30'
+    res_pass2: 1.4
+    theta_pass2: 1
+    harmony_vars_pass2:
+    - sample

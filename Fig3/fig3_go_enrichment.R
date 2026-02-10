@@ -1,23 +1,30 @@
 #!/usr/bin/env Rscript
-# Fig.3: GO enrichment for merged Monocle3 gene modules
+# -----------------------------------------------------------------------------
+# Fig3 | GO enrichment for merged Monocle3 gene modules
 #
-# Recommended:
-#   Rscript fig3_go_enrichment.R --config Fig3/configs/fig3_monocle3.yaml
+# What this script does
+#   - Reads gene module assignments produced by fig3_monocle3_modules.R.
+#   - Merges modules according to `go_merge_map` and runs GO enrichment (clusterProfiler).
+#   - Optionally simplifies redundant GO terms and writes a merged result table.
 #
-# Inputs (from YAML; defaults align with previous Fig3 steps):
-#   - out_gene_modules_csv: gene_modules.csv produced by fig3_monocle3_modules.R
+# Recommended way to run (repo wrapper)
+#   bash Fig3/run_fig3_combined.sh --only go -o <out_dir>
 #
-# Outputs:
-#   - GO_BP_merged_modules_simplified.csv (or YAML override)
-#   - params_used_fig3_go.yaml
-#   - sessionInfo_fig3_go.txt
+# Run this script directly (module-level YAML)
+#   Rscript Fig3/fig3_go_enrichment.R --config <fig3_module.yaml>
 #
-# Notes:
-# - Requires Bioconductor packages: clusterProfiler, org.Mm.eg.db
-#   Install (once) e.g.:
-#     if (!requireNamespace("BiocManager", quietly=TRUE)) install.packages("BiocManager")
-#     BiocManager::install(c("clusterProfiler","org.Mm.eg.db"))
+# Key config fields (module-level YAML)
+#   out_dir, out_gene_modules_csv, go_out_csv,
+#   go_keyType, go_ont, go_pAdjustMethod, go_pvalueCutoff, go_qvalueCutoff,
+#   go_simplify_cutoff, go_simplify_by, go_simplify_select_fun, go_merge_map
 #
+# Outputs
+#   - GO_BP_merged_modules_simplified.csv (or go_out_csv)
+#   - params_used_fig3_go.yaml, sessionInfo_fig3_go.txt
+#
+# Dependencies
+#   clusterProfiler, org.Mm.eg.db (Bioconductor), dplyr, yaml
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(dplyr)
   library(clusterProfiler)

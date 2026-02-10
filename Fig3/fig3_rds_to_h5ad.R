@@ -1,11 +1,30 @@
 #!/usr/bin/env Rscript
-# Fig.3: Convert Seurat .rds -> AnnData .h5ad (for scTour input)
+# -----------------------------------------------------------------------------
+# Fig3 | Convert Seurat .rds -> AnnData .h5ad (for scTour)
 #
-# Usage:
-#   Rscript fig3_rds_to_h5ad.R --config Fig3/configs/fig3_monocle3.yaml
+# What this script does
+#   - Loads a Seurat object (RDS) and converts it to AnnData (.h5ad) via sceasy.
+#   - This is typically run BEFORE Fig3/fig3_sctour_tnode.py.
 #
-# This step is typically run BEFORE fig3_sctour_tnode.py.
+# Recommended way to run (repo wrapper)
+#   bash Fig3/run_fig3_combined.sh --only rds2h5ad -i <seurat.rds> -o <out_dir>
 #
+# Run this script directly (module-level YAML)
+#   Rscript Fig3/fig3_rds_to_h5ad.R --config <fig3_module.yaml>
+#
+# Key config fields (module-level YAML)
+#   rds2h5ad_input_rds, rds2h5ad_output_h5ad, rds2h5ad_main_layer
+#
+# Outputs
+#   - rds2h5ad_output_h5ad
+#
+# Dependencies
+#   Seurat, sceasy, dplyr, yaml
+#
+# Notes
+#   - sceasy relies on a working Python/reticulate environment with `anndata`
+#     installed. If conversion fails, check reticulate configuration.
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(Seurat)
   library(sceasy)

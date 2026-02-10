@@ -1,17 +1,40 @@
 #!/usr/bin/env Rscript
-# Fig.3: Monocle3 pseudotime + graph_test DEG + gene modules (from Seurat object)
+# -----------------------------------------------------------------------------
+# Fig3 | Monocle3 pseudotime + graph_test DEGs + gene modules
 #
-# Recommended:
-#   Rscript fig3_monocle3_modules.R --config configs/fig3_monocle3.yaml
+# What this script does
+#   - Reads an integrated Seurat object (RDS; e.g. Fig2 output).
+#   - Converts to Monocle3 cell_data_set, learns trajectory graph, and orders cells
+#     in pseudotime using a specified root cluster.
+#   - Runs Monocle3 graph_test to identify genes varying along the trajectory.
+#   - Finds gene modules from significant DEGs.
+#   - Writes the updated Seurat object (with `pseudotime` and binned pseudotime)
+#     plus CSV/TXT artifacts used by downstream Fig3 panels.
 #
-# Outputs (written under out_dir):
-#   - obj_with_pseudotime.rds
-#   - deg_graph_test.csv
-#   - pr_deg_ids.txt
-#   - gene_modules.csv
-#   - params_used_fig3_monocle3.yaml
-#   - sessionInfo_fig3.txt
+# Recommended way to run (repo wrapper)
+#   bash Fig3/run_fig3_combined.sh --only monocle3 -i <obj_oo.rds> -o <out_dir>
 #
+# Run this script directly (module-level YAML)
+#   Rscript Fig3/fig3_monocle3_modules.R --config <fig3_module.yaml>
+#   # NOTE: This script expects a *module* YAML (keys like input_rds/out_dir/...).
+#         If your repo uses a combined YAML (figure/modules/...), use the wrapper
+#         which extracts the module config automatically.
+#
+# Key config fields (module-level YAML)
+#   input_rds, out_dir, out_obj_rds, root_cluster, num_dim, cores,
+#   q_value_thr, morans_I_thr, pseudotime_bins, module_resolution, module_seed,
+#   out_deg_csv, out_pr_deg_ids, out_gene_modules_csv
+#
+# Outputs
+#   - out_obj_rds: Seurat object with pseudotime (+ bins)
+#   - out_deg_csv: DEG table from Monocle3 graph_test
+#   - out_pr_deg_ids: significant gene IDs used for modules
+#   - out_gene_modules_csv: gene-module assignments
+#   - params_used_fig3_monocle3.yaml, sessionInfo_fig3.txt
+#
+# Dependencies
+#   Seurat, SeuratWrappers, monocle3, dplyr/tidyverse, ggplot2, patchwork, yaml
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(Seurat)
   library(dplyr)

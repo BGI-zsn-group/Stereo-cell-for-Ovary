@@ -1,22 +1,41 @@
 #!/usr/bin/env Rscript
-# Fig.3: SCENIC downstream analysis (pySCENIC result loom + Seurat pseudotime bins)
+# -----------------------------------------------------------------------------
+# Fig3 | SCENIC downstream analysis (RSS heatmap across pseudotime bins)
 #
-# Usage:
-#   Rscript fig3_scenic_downstream.R --config Fig3/configs/fig3_monocle3.yaml
+# What this script does
+#   - Reads a pySCENIC result loom (Step 2 output) and extracts regulons + AUC.
+#   - Reads a Seurat object (with pseudotime bins in meta.data).
+#   - Computes regulon specificity scores (RSS) across a grouping variable
+#     (default: pseudotime_bin_q) and writes a heatmap + CSV.
 #
-# Linked I/O behavior:
-# - Uses scenic_result_loom (from SCENIC Step2) as the primary input.
-# - If scenic_downstream_input_rds is not provided, uses:
-#     out_obj_rds (preferred) -> input_rds
+# Recommended way to run (repo wrapper)
+#   bash Fig3/run_fig3_combined.sh --only scenic_downstream -i <obj_with_pseudotime.rds> -o <out_dir>
 #
-# Outputs (defaults under results/Fig3/scenic/downstream):
-# - rss_matrix.csv
-# - rss_plot.pdf / rss_plot.png
-# - regulons_list.rds
-# - regulon_auc_thresholds.rds
-# - params_used_fig3_scenic_downstream.yaml
-# - sessionInfo_fig3_scenic_downstream.txt
+# Run this script directly (module-level YAML)
+#   Rscript Fig3/fig3_scenic_downstream.R --config <fig3_module.yaml>
 #
+# Key config fields (module-level YAML)
+#   scenic_result_loom, out_obj_rds/input_rds,
+#   scenic_stage_column, scenic_exclude_stage_value,
+#   scenic_rss_var, scenic_rss_keep_levels,
+#   scenic_rss_zThreshold, scenic_rss_thr,
+#   scenic_rss_cluster_columns, scenic_rss_order_rows,
+#   scenic_rss_col_low, scenic_rss_col_mid, scenic_rss_col_high, scenic_rss_revCol,
+#   scenic_out_dir, scenic_downstream_out_dir,
+#   scenic_rss_csv, scenic_rss_plot_pdf, scenic_rss_plot_png,
+#   scenic_regulons_rds, scenic_auc_thresholds_rds
+#
+# Outputs (under scenic_downstream_out_dir)
+#   - rss_matrix.csv
+#   - rss_plot.pdf / rss_plot.png
+#   - regulons_list.rds
+#   - regulon_auc_thresholds.rds
+#   - params_used_fig3_scenic_downstream.yaml
+#   - sessionInfo_fig3_scenic_downstream.txt
+#
+# Dependencies
+#   Seurat, dplyr, SCopeLoomR, AUCell, SCENIC, ggplot2, yaml
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(yaml)
   library(dplyr)

@@ -1,13 +1,31 @@
 #!/usr/bin/env Rscript
-# Fig.3: Length (Diameter) ~ Pseudotime smoothing plot + Pearson correlation
+# -----------------------------------------------------------------------------
+# Fig3 | Diameter (Length_px) vs pseudotime: LOESS smoothing + correlation
 #
-# Usage:
-#   Rscript fig3_length_pseudotime_plot.R --config Fig3/configs/fig3_monocle3.yaml
+# What this script does
+#   - Reads a Seurat object containing `pseudotime` and `Length_px` in meta.data.
+#   - Computes correlation (default Pearson) between pseudotime and Length_px.
+#   - Generates a smoothed LOESS curve and saves figure as PDF/PNG.
 #
-# Expects Seurat object meta.data contains:
-#   - pseudotime
-#   - Length_px
+# Recommended way to run (repo wrapper)
+#   bash Fig3/run_fig3_combined.sh --only length -i <obj_with_pseudotime.rds> -o <out_dir>
 #
+# Run this script directly (module-level YAML)
+#   Rscript Fig3/fig3_length_pseudotime.R --config <fig3_module.yaml>
+#
+# Key config fields (module-level YAML)
+#   out_obj_rds (preferred) / input_rds, out_dir,
+#   plot_out_pdf, plot_out_png, plot_out_cor_txt,
+#   plot_loess_span, plot_linewidth, plot_alpha, plot_color,
+#   plot_xlabel, plot_ylabel, plot_cor_method
+#
+# Outputs
+#   - length_vs_pseudotime.pdf / .png
+#   - length_vs_pseudotime_correlation.txt
+#
+# Dependencies
+#   Seurat, ggplot2, dplyr, reshape2, patchwork, yaml
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(Seurat)
   library(reshape2)
@@ -38,13 +56,13 @@ parse_args <- function() {
 
 help_msg <- function() {
   cat(
-"fig3_length_pseudotime_plot.R
+"fig3_length_pseudotime.R
 
 Required:
   --config <yaml>     YAML config path (reuse Fig3 config)
 
 Example:
-  Rscript fig3_length_pseudotime_plot.R --config Fig3/configs/fig3_monocle3.yaml
+  Rscript fig3_length_pseudotime.R --config Fig3/configs/fig3_monocle3.yaml
 ", sep = "")
 }
 

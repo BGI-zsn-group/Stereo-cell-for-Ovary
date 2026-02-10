@@ -1,13 +1,34 @@
 #!/usr/bin/env Rscript
-# Fig.2: Multi-sample Seurat integration with SCTransform + Harmony (two-pass workflow)
+# -----------------------------------------------------------------------------
+# Fig2 | Harmony integration (two-pass SCTransform + Harmony)
 #
-# Recommended usage (with YAML config):
-#   Rscript fig2_harmony_integration.R --config configs/fig2_harmony.yaml
+# What this script does
+#   - Reads per-sample Seurat objects (*.rds) from a directory.
+#   - Adds a `sample` metadata column based on file name.
+#   - Two-pass workflow:
+#       Pass 1) per-sample SCTransform -> merge -> SCTransform(residual.features)
+#               -> PCA -> Harmony -> neighbors/clusters/UMAP -> remove clusters
+#       Pass 2) split by sample -> per-sample SCTransform -> SCTransform(residual.features)
+#               -> PCA -> Harmony(theta) -> neighbors/clusters/UMAP
+#   - Saves the integrated Seurat object as an RDS.
 #
-# This script will also write:
-#   - <out_dir>/params_used_fig2_harmony.yaml
-#   - <out_dir>/sessionInfo_fig2.txt
+# Recommended way to run (repo wrapper)
+#   bash Fig2/run_fig2_combined.sh -i <rds_dir> -o <out_dir>
 #
+# Run this script directly (module-level YAML)
+#   Rscript Fig2/fig2_harmony_integration.R --config <fig2_harmony.yaml>
+#   # NOTE: This script expects a *module* YAML (keys like rds_dir/out).
+#         If your repo uses a combined YAML (figure/modules/...), use the wrapper
+#         which extracts the module config automatically.
+#
+# Outputs
+#   - out (RDS): integrated Seurat object (contains `harmony` reduction, UMAP, clusters)
+#   - params_used_fig2_harmony.yaml: parameters actually used (next to `out`)
+#   - sessionInfo_fig2.txt: R session/package versions (next to `out`)
+#
+# Dependencies
+#   Seurat, harmony, dplyr, patchwork, ggplot2, ggrepel, yaml
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(Seurat)
   library(dplyr)

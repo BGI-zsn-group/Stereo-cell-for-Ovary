@@ -1,7 +1,12 @@
+# NOTE: For GitHub reproducibility, update paths under:
+#   - modules.fig4_gc_processing.input_rds
+#   - modules.fig4_cell2location_spatial_prep.input_h5ad
+#   - modules.fig4_cell2location_sc_prep.obj_gr_rds / obj_total_rds (if used)
+# If you change output directories, also update downstream inputs accordingly.
 figure: fig4
 modules:
   fig4_gc_processing:
-    input_rds: obj_all_withanno.rds
+    input_rds: data/Fig4/obj_all_withanno.rds
     out_dir: results/Fig4/gc_processing
     prefix: gc
     subset_celltypes:
@@ -90,8 +95,8 @@ modules:
     out_pseudotime_csv: results/Fig4/monocle3/gc.pseudotime.csv
     out_plot_pdf: results/Fig4/monocle3/gc.monocle3_pseudotime_umap.pdf
   fig4_cell2location_sc_prep:
-    obj_gr_rds: /data/users/zhousining/zhousining_991966b9465a4a0da14819e382eaeb20/online/Final/Somatic/20251222/obj_gr_newanoo_15rs.rds
-    obj_total_rds: obj_all_withanno.rds
+    obj_gr_rds: results/Fig4/gc_processing/obj_gr_newanno.rds
+    obj_total_rds: data/Fig4/obj_all_withanno.rds
     target_sample: P49
     sample_col: sample
     celltype_col_total: celltype
@@ -138,7 +143,7 @@ modules:
     out_merged_rds: results/Fig4/cell2location_sc_ref/somatic_1226.merged_for_cell2location.rds
     main_layer: counts
   fig4_cell2location_spatial_prep:
-    input_h5ad: B04372C211.adjusted.cellbin.h5ad
+    input_h5ad: data/Fig4/spatial/B04372C211.adjusted.cellbin.h5ad
     spatial_obsm_key: spatial
     gene_name_col: real_gene_name
     drop_gene_names:
@@ -265,13 +270,13 @@ modules:
       - '17'
     roi:
       cell_ids_txt: ''
-    out_dir: results/cell2location_spatial
+    out_dir: results/Fig4/cell2location_spatial
     prefix: B04372C211
   fig4_cell2location_train:
     seed: 0
-    out_dir: results/cell2location_train
+    out_dir: results/Fig4/cell2location_train
     single_cell:
-      input_h5ad: results/cell2location_sc_ref/somatic_1226.h5ad
+      input_h5ad: results/Fig4/cell2location_sc_ref/somatic_1226.h5ad
       labels_key: celltype
       batch_key: orig.ident
       drop_mt: true
@@ -288,7 +293,7 @@ modules:
         num_samples: 1000
         batch_size: 2500
     spatial:
-      input_h5ad: results/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad
+      input_h5ad: results/Fig4/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad
       batch_key: orig.ident
       map:
         N_cells_per_location: 1
@@ -300,3 +305,52 @@ modules:
       export_posterior:
         num_samples: 1000
         batch_size: null
+  fig4_ssgsea_hallmark:
+    input_rds: results/Fig4/gc_processing/obj_gr_newanno.rds
+    out_dir: results/Fig4/ssgsea_hallmark
+    prefix: gc
+    assay: RNA
+    group_by: celltype
+    slot: data
+    species: Mus musculus
+    category: H
+    method: ssgsea
+    kcdf: Gaussian
+    min_sz: 10
+    max_sz: null
+    parallel_sz: 10
+    celltype_order:
+    - GC_Progenitor
+    - GC_Preantral
+    - GC_Preantral_1
+    - GC_Cumulus
+    - GC_Cumulus_1
+    - GC_Antral_Mural
+    - GC_Atretic
+    keep_pathways:
+    - E2F_TARGETS
+    - G2M_CHECKPOINT
+    - MITOTIC_SPINDLE
+    - MYC_TARGETS_V1
+    - MYC_TARGETS_V2
+    - DNA_REPAIR
+    - WNT_BETA_CATENIN_SIGNALING
+    - NOTCH_SIGNALING
+    - HEDGEHOG_SIGNALING
+    - TGF_BETA_SIGNALING
+    - ANGIOGENESIS
+    - OXIDATIVE_PHOSPHORYLATION
+    - GLYCOLYSIS
+    - FATTY_ACID_METABOLISM
+    - CHOLESTEROL_HOMEOSTASIS
+    - PEROXISOME
+    - MTORC1_SIGNALING
+    - PI3K_AKT_MTOR_SIGNALING
+    - P53_PATHWAY
+    - HYPOXIA
+    - REACTIVE_OXYGEN_SPECIES_PATHWAY
+    - UNFOLDED_PROTEIN_RESPONSE
+    - APOPTOSIS
+    - EPITHELIAL_MESENCHYMAL_TRANSITION
+    - TNFA_SIGNALING_VIA_NFKB
+    - IL6_JAK_STAT3_SIGNALING

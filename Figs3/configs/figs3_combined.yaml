@@ -1,5 +1,6 @@
-# NOTE: Update input paths under `modules.figs3_somatic_processing.groups[*].items[*].rds`
-# to point to your local QC-processed Seurat objects.
+# NOTE: For GitHub reproducibility, update input paths under
+#   modules.figs3_somatic_processing.groups[*].items[*].rds
+# to match your local QC-processed Seurat objects.
 figure: figs3
 modules:
   figs3_qc:

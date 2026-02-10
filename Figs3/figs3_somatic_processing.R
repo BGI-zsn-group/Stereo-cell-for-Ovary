@@ -1,15 +1,31 @@
 #!/usr/bin/env Rscript
-# Figs3: Somatic-cell integration / clustering / annotation (standalone figure)
+# -----------------------------------------------------------------------------
+# Figs3 | Somatic processing (Harmony integration + two-round cleanup)
 #
-# This script merges multiple QC-processed Seurat objects across timepoints,
-# performs variable-feature selection (excluding ribosomal/mitochondrial genes),
-# regresses out cell-cycle scores, runs PCA + Harmony integration, clustering, UMAP,
-# removes specified low-quality clusters in two rounds, and annotates cell types
-# from a cluster->celltype mapping.
+# What this script does
+#   1) Loads multiple QC-processed Seurat objects (per-sample .rds) grouped by timepoint.
+#   2) Merges samples, selects variable features (excluding genes matched by `exclude_regex`),
+#      optionally removes a manual gene blacklist, regresses cell-cycle scores, and runs PCA.
+#   3) Runs Harmony integration + neighbors/UMAP/clustering (Round 1), removes specified clusters.
+#   4) Repeats the pipeline (Round 2) to obtain the final integrated object.
+#   5) Assigns cell types using `celltype_map`, saves objects/plots/tables for the figure.
 #
-# Usage:
-#   Rscript figs3_somatic_processing.R --config Figs3/configs/figs3_somatic_processing.yaml
+# Inputs
+#   - YAML config (module `modules.figs3_somatic_processing` extracted from
+#     `Figs3/configs/figs3_combined.yaml` by the wrapper script).
+#   - Each input Seurat object should contain metadata columns:
+#       * orig.ident : sample ID (default Harmony grouping variable)
+#       * sample     : timepoint label (used for plotting)
 #
+# Outputs (written under `out_dir`)
+#   - <prefix>.round1.rds, <prefix>.final.rds
+#   - <prefix>.round1.umap.pdf, <prefix>.round2.umap.pdf, <prefix>.final.umap.pdf
+#   - <prefix>.cell_counts_by_sample_celltype.csv
+#   - <prefix>.processing.log
+#
+# Usage
+#   Rscript Figs3/figs3_somatic_processing.R --config <module_config.yaml>
+# -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(yaml)
   library(Seurat)

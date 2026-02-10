@@ -1,8 +1,10 @@
+# NOTE: Update input paths under `modules.figs3_somatic_processing.groups[*].items[*].rds`
+# to point to your local QC-processed Seurat objects.
 figure: figs3
 modules:
   figs3_qc:
     qc_enabled: true
-    qc_input_rds: path/to/your_somatic_seurat_object.rds
+    qc_input_rds: data/Figs3/qc/somatic_seurat_object.rds
     qc_species: mouse
     qc_out_dir: results/Figs3/qc
     qc_prefix: somatic
@@ -19,23 +21,23 @@ modules:
       sample_label: P14
       items:
       - id: PD14-1
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD14/PD14_1/PD14_1.qc_processed.rds
+        rds: data/Figs3/PD14/PD14_1.qc_processed.rds
       - id: PD14-2
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD14/PD14_2/PD14_2.qc_processed.rds
+        rds: data/Figs3/PD14/PD14_2.qc_processed.rds
     - name: PD21
       sample_label: P21
       items:
       - id: PD21-1
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD21/PD21_1/PD21_1_no_doublets.rds
+        rds: data/Figs3/PD21/PD21_1_no_doublets.rds
       - id: PD21-3
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD21/PD21_3/PD21_3_no_doublets.rds
+        rds: data/Figs3/PD21/PD21_3_no_doublets.rds
     - name: PD49
       sample_label: P49
       items:
       - id: PD49-1
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD49/PD49_1/PD49_1.qc_processed.rds
+        rds: data/Figs3/PD49/PD49_1.qc_processed.rds
       - id: PD49-2
-        rds: /data/users/linzhenshe/linzhenshe_1b83ab5209f344dd990af958079c6527/online/PD49/PD49_2/PD49_2.qc_processed.rds
+        rds: data/Figs3/PD49/PD49_2.qc_processed.rds
     exclude_regex: ^(Rp|mt)
     nfeatures_round1: 2000
     nfeatures_round2: 2000

@@ -1,8 +1,8 @@
-# Single-cell transcriptomic atlas of mouse oocyte development from primary to peri-ovulatory follicles
+# Single-cell transcriptomic atlas of mouse oocyte development from growth to ovulation
 
 This repository contains the analysis workflows used to generate the main and supplementary figures for the manuscript:
 
-**_Single-cell transcriptomic atlas of mouse oocyte development from primary to peri-ovulatory follicles_**
+**_Single-cell transcriptomic atlas of mouse oocyte development from growth to ovulation_**
 
 The codebase is organized **by figure**. Each figure folder is intended to be runnable and reproducible on its own, with:
 - a combined YAML config (`configs/*_combined.yaml`) describing inputs/parameters,
@@ -131,6 +131,6 @@ bash Fig4/run_fig4_combined.sh --only ssgsea --set parallel_sz=16 -o results/Fig
 
 If you use this repository (or parts of it) in your work, please cite the manuscript:
 
-**Single-cell transcriptomic atlas of mouse oocyte development from primary to peri-ovulatory follicles**
+**Single-cell transcriptomic atlas of mouse oocyte development from growth to ovulation**
 
 (Full citation details to be added upon publication.)

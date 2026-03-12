@@ -150,7 +150,7 @@ res_pass1 <- if (!is.null(cfg$res_pass1)) as.numeric(cfg$res_pass1) else 1
 remove_clusters <- if (!is.null(cfg$remove_clusters)) as_int_vec(cfg$remove_clusters) else c(8, 9)
 
 dims_pass2 <- parse_dims(cfg$dims_pass2, 1:30)
-res_pass2 <- if (!is.null(cfg$res_pass2)) as.numeric(cfg$res_pass2) else 1.4
+res_pass2 <- if (!is.null(cfg$res_pass2)) as.numeric(cfg$res_pass2) else 1.2
 theta_pass2 <- if (!is.null(cfg$theta_pass2)) as.numeric(cfg$theta_pass2) else 1
 
 harmony_vars_pass1 <- if (!is.null(cfg$harmony_vars_pass1)) as_vars(cfg$harmony_vars_pass1) else c("sample")

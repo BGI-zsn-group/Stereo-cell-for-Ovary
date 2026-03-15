@@ -1,30 +1,13 @@
+\
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # Figs3 | Somatic processing (Harmony integration + two-round cleanup)
 #
-# What this script does
-#   1) Loads multiple QC-processed Seurat objects (per-sample .rds) grouped by timepoint.
-#   2) Merges samples, selects variable features (excluding genes matched by `exclude_regex`),
-#      optionally removes a manual gene blacklist, regresses cell-cycle scores, and runs PCA.
-#   3) Runs Harmony integration + neighbors/UMAP/clustering (Round 1), removes specified clusters.
-#   4) Repeats the pipeline (Round 2) to obtain the final integrated object.
-#   5) Assigns cell types using `celltype_map`, saves objects/plots/tables for the figure.
-#
-# Inputs
-#   - YAML config (module `modules.figs3_somatic_processing` extracted from
-#     `Figs3/configs/figs3_combined.yaml` by the wrapper script).
-#   - Each input Seurat object should contain metadata columns:
-#       * orig.ident : sample ID (default Harmony grouping variable)
-#       * sample     : timepoint label (used for plotting)
-#
-# Outputs (written under `out_dir`)
-#   - <prefix>.round1.rds, <prefix>.final.rds
-#   - <prefix>.round1.umap.pdf, <prefix>.round2.umap.pdf, <prefix>.final.umap.pdf
-#   - <prefix>.cell_counts_by_sample_celltype.csv
-#   - <prefix>.processing.log
-#
-# Usage
-#   Rscript Figs3/figs3_somatic_processing.R --config <module_config.yaml>
+# Updated behavior:
+#   Preferred input is a SINGLE QC-processed Seurat object produced by figs3_qc.
+#   The script still supports the legacy `groups` mode as a fallback, but by
+#   default it now reads `input_rds` first and runs downstream integration /
+#   clustering / annotation from that QC output.
 # -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(yaml)
@@ -73,14 +56,9 @@ write_text <- function(path, txt) {
   writeLines(txt, con = con)
 }
 
-%||% <- function(a, b) if (!is.null(a) && length(a) > 0 && !all(is.na(a))) a else b
+`%||%` <- function(a, b) if (!is.null(a) && length(a) > 0 && !all(is.na(a))) a else b
 
-# ---------- Helpers ----------
 load_group_object <- function(group_cfg) {
-  # group_cfg:
-  #   name: "PD14"
-  #   sample_label: "P14"
-  #   items: [{id:"PD14-1", rds:"..."}, ...]
   if (is.null(group_cfg$items) || length(group_cfg$items) == 0) stop("Each group must have non-empty items.", call. = FALSE)
   group_name <- as.character(group_cfg$name)
   if (!nzchar(group_name)) stop("Group name missing.", call. = FALSE)
@@ -101,10 +79,8 @@ load_group_object <- function(group_cfg) {
     ids <- c(ids, id)
   }
 
-  # Merge within group
   if (length(objs) == 1) {
     obj <- objs[[1]]
-    # Add sample label
     obj$sample <- sample_label
     return(obj)
   }
@@ -118,7 +94,6 @@ load_group_object <- function(group_cfg) {
 }
 
 prep_split_list <- function(obj, nfeatures = 2000) {
-  # Split by orig.ident (Idents should be set before calling)
   obj.list <- SplitObject(obj)
   obj.list <- lapply(X = obj.list, FUN = function(x) {
     x <- NormalizeData(x, verbose = FALSE)
@@ -133,26 +108,24 @@ select_features_excluding <- function(obj, obj.list, nfeatures = 2000, exclude_r
   fl_genes <- grep(exclude_regex, rownames(obj), value = TRUE)
   feats <- setdiff(feats, fl_genes)
   if (!is.null(manual_exclude) && length(manual_exclude) > 0) {
-    manual_exclude <- as.character(unlist(manual_exclude))
-    feats <- setdiff(feats, manual_exclude)
+    feats <- setdiff(feats, as.character(unlist(manual_exclude)))
   }
   feats
 }
 
 cell_cycle_lists_mouse <- function() {
-  s.genes <- c(
-    "Mcm5","Pcna","Tyms","Fen1","Mcm7","Mcm4","Rrm1","Ung","Gins2","Mcm6","Cdca7","Dtl",
-    "Prim1","Uhrf1","Cenpu","Hells","Rfc2","Polr1b","Nasp","Rad51ap1","Gmnn","Wdr76",
-    "Slbp","Ccne2","Ubr7","Pold3","Msh2","Atad2","Rad51","Rrm2","Cdc45","Cdc6","Exo1",
-    "Tipin","Dscc1","Blm","Casp8ap2","Usp1","Clspn","Pola1","Chaf1b","Mrpl36","E2f8"
-  )
-  g2m.genes <- c(
-    "Hmgb2","Cdk1","Nusap1","Ube2c","Birc5","Tpx2","Top2a","Ndc80","Cks2","Nuf2","Cks1b","Mki67",
-    "Tmpo","Cenpf","Tacc3","Pimreg","Smc4","Ccnb2","Ckap2l","Ckap2","Aurkb","Bub1","Kif11","Anp32e",
-    "Tubb4b","Gtse1","Kif20b","Hjurp","Cdca3","Jpt1","Cdc20","Ttk","Cdc25c","Kif2c","Rangap1","Ncapd2",
-    "Dlgap5","Cdca2","Cdca8","Ect2","Kif23","Hmmr","Aurka","Psrc1","Anln","Lbr","Ckap5","Cenpe","Ctcf",
-    "Nek2","G2e3","Gas2l3","Cbx5","Cenpa"
-  )
+  s.genes <- c("Mcm5", "Pcna", "Tyms", "Fen1", "Mcm7", "Mcm4", "Rrm1", "Ung", "Gins2", "Mcm6",
+               "Cdca7", "Dtl", "Prim1", "Uhrf1", "Cenpu", "Hells", "Rfc2", "Polr1b", "Nasp",
+               "Rad51ap1", "Gmnn", "Wdr76", "Slbp", "Ccne2", "Ubr7", "Pold3", "Msh2", "Atad2",
+               "Rad51", "Rrm2", "Cdc45", "Cdc6", "Exo1", "Tipin", "Dscc1", "Blm", "Casp8ap2",
+               "Usp1", "Clspn", "Pola1", "Chaf1b", "Mrpl36", "E2f8")
+  g2m.genes <- c("Hmgb2", "Cdk1", "Nusap1", "Ube2c", "Birc5", "Tpx2", "Top2a", "Ndc80", "Cks2",
+                 "Nuf2", "Cks1b", "Mki67", "Tmpo", "Cenpf", "Tacc3", "Pimreg", "Smc4", "Ccnb2",
+                 "Ckap2l", "Ckap2", "Aurkb", "Bub1", "Kif11", "Anp32e", "Tubb4b", "Gtse1",
+                 "Kif20b", "Hjurp", "Cdca3", "Jpt1", "Cdc20", "Ttk", "Cdc25c", "Kif2c",
+                 "Rangap1", "Ncapd2", "Dlgap5", "Cdca2", "Cdca8", "Ect2", "Kif23", "Hmmr",
+                 "Aurka", "Psrc1", "Anln", "Lbr", "Ckap5", "Cenpe", "Ctcf", "Nek2", "G2e3",
+                 "Gas2l3", "Cbx5", "Cenpa")
   list(s.genes = s.genes, g2m.genes = g2m.genes)
 }
 
@@ -176,18 +149,13 @@ run_harmony_pipeline <- function(
   obj <- NormalizeData(obj, verbose = FALSE)
   VariableFeatures(obj) <- features
 
-  # cell cycle scoring
   s.genes <- intersect(s.genes, rownames(obj))
   g2m.genes <- intersect(g2m.genes, rownames(obj))
   obj <- CellCycleScoring(obj, s.features = s.genes, g2m.features = g2m.genes, set.ident = FALSE)
 
-  # scale + regress
   obj <- ScaleData(obj, vars.to.regress = c("S.Score", "G2M.Score"), verbose = FALSE)
-
-  # PCA
   obj <- RunPCA(obj, features = features, verbose = FALSE)
 
-  # Harmony
   obj <- RunHarmony(
     object = obj,
     group.by.vars = harmony_group,
@@ -199,7 +167,6 @@ run_harmony_pipeline <- function(
     verbose = verbose
   )
 
-  # graph + clustering + UMAP
   obj <- FindNeighbors(obj, reduction = "harmony", dims = neighbors_dims, verbose = FALSE)
   obj <- FindClusters(obj, reduction = "harmony", resolution = cluster_resolution, verbose = FALSE)
   obj <- RunUMAP(obj, reduction = "harmony", dims = umap_dims, verbose = FALSE)
@@ -208,7 +175,6 @@ run_harmony_pipeline <- function(
 }
 
 apply_celltype_map <- function(obj, celltype_map) {
-  # celltype_map is a named list: {Celltype: [cluster_ids]}
   if (is.null(celltype_map) || length(celltype_map) == 0) return(obj)
   if (!"seurat_clusters" %in% colnames(obj@meta.data)) stop("seurat_clusters missing in object.", call. = FALSE)
 
@@ -221,21 +187,59 @@ apply_celltype_map <- function(obj, celltype_map) {
   obj
 }
 
-# ---------- Main ----------
+assign_sample_from_map <- function(obj, sample_map = NULL, groups = NULL) {
+  if (!"orig.ident" %in% colnames(obj@meta.data)) {
+    obj$orig.ident <- Idents(obj)
+  }
+
+  # If sample already exists and is not all missing, keep it
+  if ("sample" %in% colnames(obj@meta.data)) {
+    x <- obj$sample
+    if (!all(is.na(x)) && any(nzchar(as.character(x)))) {
+      obj$sample <- factor(obj$sample)
+      obj$orig.ident <- factor(obj$orig.ident)
+      return(obj)
+    }
+  }
+
+  map_vec <- NULL
+
+  if (!is.null(sample_map) && length(sample_map) > 0) {
+    map_vec <- unlist(sample_map)
+  } else if (!is.null(groups) && length(groups) > 0) {
+    tmp <- c()
+    for (g in groups) {
+      lab <- as.character(g$sample_label %||% g$name)
+      if (!is.null(g$items) && length(g$items) > 0) {
+        for (it in g$items) {
+          tmp[as.character(it$id)] <- lab
+        }
+      }
+    }
+    map_vec <- tmp
+  }
+
+  if (!is.null(map_vec) && length(map_vec) > 0) {
+    obj$sample <- unname(map_vec[as.character(obj$orig.ident)])
+  } else {
+    obj$sample <- as.character(obj$orig.ident)
+  }
+
+  obj$sample <- factor(obj$sample)
+  obj$orig.ident <- factor(obj$orig.ident)
+  obj
+}
+
 args <- parse_args()
 if (!is.null(args$help) && isTRUE(args$help)) { help_msg(); quit(status = 0) }
 if (is.null(args$config)) { help_msg(); stop("Missing --config", call. = FALSE) }
 
 cfg <- yaml::read_yaml(args$config)
 
-out_dir <- cfg$out_dir
-if (is.null(out_dir) || !nzchar(as.character(out_dir))) out_dir <- "results/Figs3/somatic_processing"
-out_dir <- as.character(out_dir)
+out_dir <- as.character(cfg$out_dir %||% "results/Figs3/somatic_processing")
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-prefix <- cfg$prefix
-if (is.null(prefix) || !nzchar(as.character(prefix))) prefix <- "somatic"
-prefix <- as.character(prefix)
+prefix <- as.character(cfg$prefix %||% "somatic")
 
 log_path <- file.path(out_dir, paste0(prefix, ".processing.log"))
 log_file <- file(log_path, open = "wt")
@@ -245,44 +249,46 @@ sink(log_file, type = "message")
 message("[figs3] out_dir: ", out_dir)
 message("[figs3] start: ", Sys.time())
 
-# ---- Load inputs ----
-if (is.null(cfg$groups) || length(cfg$groups) == 0) {
-  stop("Config must contain `groups` (list).", call. = FALSE)
-}
+# ---- Load input object ----
+obj_merge <- NULL
 
-group_objs <- list()
-for (g in cfg$groups) {
-  obj_g <- load_group_object(g)
-  group_name <- as.character(g$name)
-  group_objs[[group_name]] <- obj_g
-}
-
-# Merge across groups
-group_names <- names(group_objs)
-if (length(group_names) == 1) {
-  obj_merge <- group_objs[[1]]
+input_rds <- cfg$input_rds %||% cfg$in_rds
+if (!is.null(input_rds) && nzchar(as.character(input_rds))) {
+  input_rds <- as.character(input_rds)
+  if (!file.exists(input_rds)) stop("Missing input_rds: ", input_rds, call. = FALSE)
+  message("[figs3] load QC-processed input_rds: ", input_rds)
+  obj_merge <- readRDS(input_rds)
+  if (!inherits(obj_merge, "Seurat")) stop("input_rds must be a Seurat object.", call. = FALSE)
+  obj_merge <- assign_sample_from_map(obj_merge, sample_map = cfg$sample_map, groups = cfg$groups)
 } else {
-  obj_merge <- group_objs[[group_names[[1]]]]
-  rest <- group_objs[group_names[-1]]
-  obj_merge <- merge(obj_merge, y = rest)
+  if (is.null(cfg$groups) || length(cfg$groups) == 0) {
+    stop("Config must contain either `input_rds` or `groups`.", call. = FALSE)
+  }
+  group_objs <- list()
+  for (g in cfg$groups) {
+    obj_g <- load_group_object(g)
+    group_name <- as.character(g$name)
+    group_objs[[group_name]] <- obj_g
+  }
+
+  group_names <- names(group_objs)
+  if (length(group_names) == 1) {
+    obj_merge <- group_objs[[1]]
+  } else {
+    obj_merge <- group_objs[[group_names[[1]]]]
+    rest <- group_objs[group_names[-1]]
+    obj_merge <- merge(obj_merge, y = rest)
+  }
+  obj_merge <- assign_sample_from_map(obj_merge, sample_map = cfg$sample_map, groups = cfg$groups)
 }
-message("[figs3] merged cells: ", ncol(obj_merge))
 
-# Ensure factors
-obj_merge$orig.ident <- factor(obj_merge$orig.ident)
-obj_merge$sample <- factor(obj_merge$sample)
+message("[figs3] merged/input cells: ", ncol(obj_merge))
 
-# ---- Round 1 integration ----
+# ---- Round 1 ----
 Idents(obj_merge) <- "orig.ident"
 
-nfeatures_round1 <- cfg$nfeatures_round1
-if (is.null(nfeatures_round1)) nfeatures_round1 <- 2000
-nfeatures_round1 <- as.integer(nfeatures_round1)
-
-exclude_regex <- cfg$exclude_regex
-if (is.null(exclude_regex) || !nzchar(as.character(exclude_regex))) exclude_regex <- "^(Rp|mt)"
-exclude_regex <- as.character(exclude_regex)
-
+nfeatures_round1 <- as.integer(cfg$nfeatures_round1 %||% 2000)
+exclude_regex <- as.character(cfg$exclude_regex %||% "^(Rp|mt)")
 manual_exclude <- cfg$manual_exclude_genes_round1
 
 obj.list <- prep_split_list(obj_merge, nfeatures = nfeatures_round1)
@@ -290,8 +296,7 @@ features1 <- select_features_excluding(obj_merge, obj.list, nfeatures = nfeature
                                       exclude_regex = exclude_regex, manual_exclude = manual_exclude)
 
 cc <- cell_cycle_lists_mouse()
-p1 <- cfg$pipeline_round1
-if (is.null(p1)) p1 <- list()
+p1 <- cfg$pipeline_round1 %||% list()
 
 obj_merge_proc <- run_harmony_pipeline(
   obj = obj_merge,
@@ -309,43 +314,29 @@ obj_merge_proc <- run_harmony_pipeline(
   verbose = TRUE
 )
 
-# Save round1 object (optional)
-out_round1_rds <- cfg$out_round1_rds
-if (is.null(out_round1_rds) || !nzchar(as.character(out_round1_rds))) {
-  out_round1_rds <- file.path(out_dir, paste0(prefix, ".round1.rds"))
-}
+out_round1_rds <- as.character(cfg$out_round1_rds %||% file.path(out_dir, paste0(prefix, ".round1.rds")))
 saveRDS(obj_merge_proc, out_round1_rds)
 message("[figs3] saved round1: ", out_round1_rds)
 
-# Round1 plots
 p_umap1_sample <- DimPlot(obj_merge_proc, reduction = "umap", group.by = "sample", label = FALSE) + ggtitle("UMAP by sample (round1)")
 p_umap1_orig   <- DimPlot(obj_merge_proc, reduction = "umap", group.by = "orig.ident", label = FALSE) + ggtitle("UMAP by orig.ident (round1)")
 p_umap1_clust  <- DimPlot(obj_merge_proc, reduction = "umap", group.by = "seurat_clusters", label = TRUE, repel = TRUE) + ggtitle("UMAP by clusters (round1)")
 ggsave(file.path(out_dir, paste0(prefix, ".round1.umap.pdf")), p_umap1_sample + p_umap1_orig + p_umap1_clust, width = 14, height = 5)
 
-# ---- Round 1 exclusion ----
-exclude1 <- cfg$exclude_clusters_round1
-if (is.null(exclude1)) exclude1 <- c("3", "14")
-exclude1 <- as.character(unlist(exclude1))
-
+exclude1 <- as.character(unlist(cfg$exclude_clusters_round1 %||% c("3", "14")))
 obj_subset <- subset(obj_merge_proc, subset = !(seurat_clusters %in% exclude1))
 message("[figs3] after exclude round1 clusters {", paste(exclude1, collapse = ","), "} cells: ", ncol(obj_subset))
 
-# ---- Round 2 integration ----
+# ---- Round 2 ----
 Idents(obj_subset) <- "orig.ident"
-
-nfeatures_round2 <- cfg$nfeatures_round2
-if (is.null(nfeatures_round2)) nfeatures_round2 <- 2000
-nfeatures_round2 <- as.integer(nfeatures_round2)
-
+nfeatures_round2 <- as.integer(cfg$nfeatures_round2 %||% 2000)
 manual_exclude2 <- cfg$manual_exclude_genes_round2
 
 obj.list2 <- prep_split_list(obj_subset, nfeatures = nfeatures_round2)
 features2 <- select_features_excluding(obj_subset, obj.list2, nfeatures = nfeatures_round2,
                                       exclude_regex = exclude_regex, manual_exclude = manual_exclude2)
 
-p2 <- cfg$pipeline_round2
-if (is.null(p2)) p2 <- list()
+p2 <- cfg$pipeline_round2 %||% list()
 
 obj_subset_proc <- run_harmony_pipeline(
   obj = obj_subset,
@@ -363,45 +354,31 @@ obj_subset_proc <- run_harmony_pipeline(
   verbose = TRUE
 )
 
-# Round2 plots
-p_umap2_sample <- DimPlot(obj_subset_proc, reduction = "umap", group.by = "sample", label = FALSE) + ggtitle("UMAP by sample (round22)")
+p_umap2_sample <- DimPlot(obj_subset_proc, reduction = "umap", group.by = "sample", label = FALSE) + ggtitle("UMAP by sample (round2)")
 p_umap2_orig   <- DimPlot(obj_subset_proc, reduction = "umap", group.by = "orig.ident", label = FALSE) + ggtitle("UMAP by orig.ident (round2)")
 p_umap2_clust  <- DimPlot(obj_subset_proc, reduction = "umap", group.by = "seurat_clusters", label = TRUE, repel = TRUE) + ggtitle("UMAP by clusters (round2)")
 ggsave(file.path(out_dir, paste0(prefix, ".round2.umap.pdf")), p_umap2_sample + p_umap2_orig + p_umap2_clust, width = 14, height = 5)
 
-# ---- Round 2 exclusion ----
-exclude2 <- cfg$exclude_clusters_round2
-if (is.null(exclude2)) exclude2 <- c("25", "12")
-exclude2 <- as.character(unlist(exclude2))
-
+exclude2 <- as.character(unlist(cfg$exclude_clusters_round2 %||% c("25", "12")))
 obj_final <- subset(obj_subset_proc, subset = !(seurat_clusters %in% exclude2))
 message("[figs3] after exclude round2 clusters {", paste(exclude2, collapse = ","), "} cells: ", ncol(obj_final))
 
-# ---- Cell type annotation ----
-celltype_map <- cfg$celltype_map
-obj_final <- apply_celltype_map(obj_final, celltype_map)
+obj_final <- apply_celltype_map(obj_final, cfg$celltype_map)
 
-# Save final object
-out_final_rds <- cfg$out_final_rds
-if (is.null(out_final_rds) || !nzchar(as.character(out_final_rds))) {
-  out_final_rds <- file.path(out_dir, paste0(prefix, ".final.rds"))
-}
+out_final_rds <- as.character(cfg$out_final_rds %||% file.path(out_dir, paste0(prefix, ".final.rds")))
 saveRDS(obj_final, out_final_rds)
 message("[figs3] saved final: ", out_final_rds)
 
-# Final plots
 p_umap_ct <- DimPlot(obj_final, reduction = "umap", group.by = "celltype", label = TRUE, repel = TRUE) + ggtitle("UMAP by celltype (final)")
 p_umap_sample <- DimPlot(obj_final, reduction = "umap", group.by = "sample", label = FALSE) + ggtitle("UMAP by sample (final)")
 p_umap_orig <- DimPlot(obj_final, reduction = "umap", group.by = "orig.ident", label = FALSE) + ggtitle("UMAP by orig.ident (final)")
 ggsave(file.path(out_dir, paste0(prefix, ".final.umap.pdf")), p_umap_sample + p_umap_orig + p_umap_ct, width = 16, height = 5)
 
-# Counts table
 ct_tbl <- obj_final@meta.data %>%
   dplyr::count(sample, celltype, name = "n_cells") %>%
   dplyr::arrange(sample, dplyr::desc(n_cells))
 write.csv(ct_tbl, file.path(out_dir, paste0(prefix, ".cell_counts_by_sample_celltype.csv")), row.names = FALSE)
 
-# Provenance
 params_used <- cfg
 params_used$out_dir <- out_dir
 params_used$out_round1_rds <- out_round1_rds

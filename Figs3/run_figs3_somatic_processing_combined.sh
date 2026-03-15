@@ -1,161 +1,169 @@
+\
 #!/usr/bin/env bash
 set -euo pipefail
 
-# -----------------------------------------------------------------------------
-# Figs3 runner (combined YAML): somatic processing
-#
-# Recommended (from repo root):
-#   bash Figs3/run_figs3_somatic_processing_combined.sh \
-#     -i Figs3/configs/figs3_combined.yaml
-#
-# Optional:
-#   -o/--out <dir|final.rds>      Override output directory or final RDS path
-#   --set key=value              Override config values (supports nested keys with dots)
-#
-# Examples:
-#   # write all outputs under a custom directory
-#   bash Figs3/run_figs3_somatic_processing_combined.sh -o results/Figs3/somatic_processing_alt
-#
-#   # override a nested harmony parameter
-#   bash Figs3/run_figs3_somatic_processing_combined.sh --set pipeline_round2.theta=2.0
-# -----------------------------------------------------------------------------
-
-die() { echo "ERROR: $*" >&2; exit 1; }
-
-usage() {
+usage(){
   cat <<'USAGE'
 Usage:
-  bash Figs3/run_figs3_somatic_processing_combined.sh [options]
+  bash Figs3/run_figs3_somatic_processing_combined.sh [--only qc|somatic_processing|all]
+                                                      [-o OUTROOT]
+                                                      [--set key=value]...
+                                                      [--config PATH | --config-dir DIR]
+                                                      [--scripts-dir DIR]
+                                                      [--dry-run]
 
-Options:
-  -i, --in <combined.yaml>     Combined YAML (default: Figs3/configs/figs3_combined.yaml)
-  -m, --module <name>          Module key under `modules` (default: figs3_somatic_processing)
-  -s, --script <path>          R script path (default: Figs3/figs3_somatic_processing.R)
-  -o, --out <dir|final.rds>    Override output directory or final RDS path
-      --set key=value          Override config values (can repeat; supports dot paths)
-  -h, --help                   Show help
+Behavior:
+  - default is `all`: run QC first, then somatic processing
+  - `qc`: run only QC
+  - `somatic_processing`: run only downstream processing
 
-Notes:
-  - The wrapper requires Python + PyYAML to extract a module from the combined YAML.
-  - The R script requires Seurat + harmony + yaml + dplyr + ggplot2 + patchwork.
+Examples:
+  # full pipeline (recommended)
+  bash Figs3/run_figs3_somatic_processing_combined.sh
+
+  # only QC
+  bash Figs3/run_figs3_somatic_processing_combined.sh --only qc
+
+  # only downstream processing
+  bash Figs3/run_figs3_somatic_processing_combined.sh --only somatic_processing
+
+  # redirect outputs under a new root
+  bash Figs3/run_figs3_somatic_processing_combined.sh -o results/Figs3_alt
 USAGE
 }
 
-COMBINED_DEFAULT="Figs3/configs/figs3_combined.yaml"
-MODULE_DEFAULT="figs3_somatic_processing"
-SCRIPT_DEFAULT="Figs3/figs3_somatic_processing.R"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_CONFIG_DIR="$SCRIPT_DIR/configs"
+
+ONLY="all"
+CONFIG=""
+CONFIG_DIR="$DEFAULT_CONFIG_DIR"
+SCRIPTS_DIR="$SCRIPT_DIR"
+DRY_RUN=0
 
 PYTHON_BIN="${PYTHON_BIN:-python}"
+R_BIN="${R_BIN:-Rscript}"
 
-# Under `set -u`, arrays must be declared.
-declare -a OV_SET=()
-
-COMBINED="$COMBINED_DEFAULT"
-MODULE_KEY="$MODULE_DEFAULT"
-SCRIPT="$SCRIPT_DEFAULT"
-OUT_OVERRIDE=""
+declare -a OVERRIDES=()
+OUTROOT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -i|--in)
-      [[ $# -ge 2 ]] || die "Missing value for $1"
-      COMBINED="$2"; shift 2;;
-    -m|--module)
-      [[ $# -ge 2 ]] || die "Missing value for $1"
-      MODULE_KEY="$2"; shift 2;;
-    -s|--script)
-      [[ $# -ge 2 ]] || die "Missing value for $1"
-      SCRIPT="$2"; shift 2;;
-    -o|--out)
-      [[ $# -ge 2 ]] || die "Missing value for $1"
-      OUT_OVERRIDE="$2"; shift 2;;
-    --set)
-      [[ $# -ge 2 ]] || die "Missing value for --set"
-      [[ -n "$2" ]] || die "Override cannot be empty"
-      [[ "$2" == *"="* ]] || die "Override must be key=value (got '$2')"
-      KEY="${2%%=*}"
-      [[ -n "$KEY" ]] || die "Override key cannot be empty (got '$2')"
-      OV_SET+=("$2")
-      shift 2;;
-    -h|--help)
-      usage; exit 0;;
-    *)
-      die "Unknown arg: $1 (use -h for help)";;
+    --only) ONLY="${2:-}"; shift 2;;
+    --config) CONFIG="${2:-}"; shift 2;;
+    --config-dir) CONFIG_DIR="${2:-}"; shift 2;;
+    --scripts-dir) SCRIPTS_DIR="${2:-}"; shift 2;;
+    --set) OVERRIDES+=("${2:-}"); shift 2;;
+    -o|--out) OUTROOT="${2:-}"; shift 2;;
+    --dry-run) DRY_RUN=1; shift;;
+    -h|--help) usage; exit 0;;
+    *) echo "Unknown arg: $1"; usage; exit 2;;
   esac
 done
 
-[[ -f "$COMBINED" ]] || die "Combined YAML not found: $COMBINED"
-[[ -f "$SCRIPT" ]] || die "R script not found: $SCRIPT"
+# If user sets a root output dir, sync both modules:
+#   qc -> <OUTROOT>/qc
+#   processing -> <OUTROOT>/somatic_processing
+# and wire processing.input_rds to qc_out_rds automatically
+if [[ -n "$OUTROOT" ]]; then
+  OVERRIDES+=(
+    "figs3_qc.qc_out_dir=$OUTROOT/qc"
+    "figs3_qc.qc_out_rds=$OUTROOT/qc/somatic.qc_processed.rds"
+    "figs3_somatic_processing.out_dir=$OUTROOT/somatic_processing"
+    "figs3_somatic_processing.out_round1_rds=$OUTROOT/somatic_processing/somatic.round1.rds"
+    "figs3_somatic_processing.out_final_rds=$OUTROOT/somatic_processing/somatic.final.rds"
+    "figs3_somatic_processing.input_rds=$OUTROOT/qc/somatic.qc_processed.rds"
+  )
+fi
 
-TMP_CFG="$(mktemp -t figs3_cfg_XXXXXX.yaml)"
-cleanup() { rm -f "$TMP_CFG"; }
-trap cleanup EXIT
+find_config(){
+  if [[ -n "$CONFIG" ]]; then echo "$CONFIG"; return; fi
+  for name in figs3_combined.yaml figs3_combined_v2.yaml; do
+    local p="$CONFIG_DIR/$name"
+    [[ -f "$p" ]] && { echo "$p"; return; }
+  done
+  echo "ERROR: cannot find figs3_combined.yaml under $CONFIG_DIR" >&2
+  exit 1
+}
 
-"$PYTHON_BIN" - "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "$OUT_OVERRIDE" "${OV_SET[@]}" <<'PY'
-import os, sys
+extract_module(){
+  local combined="$1" mkey="$2" out_cfg="$3"; shift 3
+
+  # Filter empty overrides
+  local -a clean=()
+  local ov
+  for ov in "$@"; do
+    [[ -n "${ov:-}" ]] && clean+=("$ov")
+  done
+
+  "$PYTHON_BIN" - <<'PY' "$combined" "$mkey" "$out_cfg" "${clean[@]}"
+import sys
 try:
-    import yaml
-except ImportError as e:
-    raise SystemExit("ERROR: Python package 'pyyaml' is required. Install with: pip install pyyaml") from e
+  import yaml
+except Exception:
+  raise SystemExit('ERROR: missing dependency pyyaml. Install: pip install pyyaml')
 
-combined_path, module_key, out_path, out_override = sys.argv[1:5]
-overrides = sys.argv[5:]
+combined, mkey, outp = sys.argv[1], sys.argv[2], sys.argv[3]
+ovs = sys.argv[4:]
+cfg = yaml.safe_load(open(combined,'r',encoding='utf-8')) or {}
+mods = cfg.get('modules') or {}
+if mkey not in mods:
+  raise SystemExit(f"ERROR: module '{mkey}' not found under modules in {combined}")
+mod = mods[mkey]
 
-with open(combined_path, "r", encoding="utf-8") as f:
-    cfg = yaml.safe_load(f) or {}
+def set_path(d, path, val):
+  ks=[k for k in path.split('.') if k]
+  cur=d
+  for k in ks[:-1]:
+    if k not in cur or cur[k] is None:
+      cur[k]={}
+    cur=cur[k]
+  if not ks:
+    raise SystemExit("ERROR: empty override key")
+  cur[ks[-1]]=val
 
-mod = (cfg.get("modules") or {}).get(module_key)
-if mod is None:
-    raise SystemExit(f"ERROR: module '{module_key}' not found under 'modules' in {combined_path}")
+for ov in ovs:
+  if not ov or '=' not in ov:
+    raise SystemExit(f"ERROR: override must be key=value (got: {ov})")
+  k,v=ov.split('=',1)
+  k=k.strip()
+  if k.startswith(mkey+'.'):
+    k=k[len(mkey)+1:]
+  set_path(mod,k,v)
 
-def parse_value(v: str):
-    # Best-effort type parsing using YAML itself
-    try:
-        return yaml.safe_load(v)
-    except Exception:
-        return v
-
-def set_by_path(d, path, value):
-    parts = path.split(".")
-    cur = d
-    for p in parts[:-1]:
-        if p not in cur or not isinstance(cur[p], dict):
-            cur[p] = {}
-        cur = cur[p]
-    cur[parts[-1]] = value
-
-# Apply --out override first (so --set can still overwrite afterwards)
-if out_override:
-    if out_override.endswith(".rds"):
-        out_dir = os.path.dirname(out_override) or "."
-        mod["out_dir"] = out_dir
-        mod["out_final_rds"] = out_override
-        # Round1 RDS goes alongside final unless explicitly overridden later
-        prefix = str(mod.get("prefix") or "somatic")
-        mod["out_round1_rds"] = os.path.join(out_dir, f"{prefix}.round1.rds")
-    else:
-        # treat as directory
-        out_dir = out_override
-        mod["out_dir"] = out_dir
-        prefix = str(mod.get("prefix") or "somatic")
-        mod["out_round1_rds"] = os.path.join(out_dir, f"{prefix}.round1.rds")
-        mod["out_final_rds"] = os.path.join(out_dir, f"{prefix}.final.rds")
-
-# Apply --set overrides (supports nested keys via dots)
-for ov in overrides:
-    if not ov:
-        continue
-    if "=" not in ov:
-        raise SystemExit(f"ERROR: override must be key=value (got '{ov}')")
-    k, v = ov.split("=", 1)
-    k = k.strip()
-    if not k:
-        raise SystemExit(f"ERROR: override key cannot be empty (got '{ov}')")
-    set_by_path(mod, k, parse_value(v.strip()))
-
-with open(out_path, "w", encoding="utf-8") as f:
-    yaml.safe_dump(mod, f, sort_keys=False, allow_unicode=True)
+yaml.safe_dump(mod, open(outp,'w',encoding='utf-8'), sort_keys=False, allow_unicode=True)
 PY
+}
 
-Rscript "$SCRIPT" --config "$TMP_CFG"
-echo "[OK] Figs3 somatic processing finished (combined: $COMBINED | module: $MODULE_KEY)"
+run_cmd(){
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '+'; printf ' %q' "$@"; printf '\n'
+  else
+    "$@"
+  fi
+}
+
+COMBINED="$(find_config)"
+
+run_qc(){
+  local tmp; tmp="$(mktemp -t figs3_qc_XXXX.yaml)"
+  extract_module "$COMBINED" "figs3_qc" "$tmp" "${OVERRIDES[@]}"
+  run_cmd "$R_BIN" "$SCRIPTS_DIR/figs3_somatic_qc.R" --config "$tmp"
+  rm -f "$tmp"
+}
+
+run_proc(){
+  local tmp; tmp="$(mktemp -t figs3_proc_XXXX.yaml)"
+  extract_module "$COMBINED" "figs3_somatic_processing" "$tmp" "${OVERRIDES[@]}"
+  run_cmd "$R_BIN" "$SCRIPTS_DIR/figs3_somatic_processing.R" --config "$tmp"
+  rm -f "$tmp"
+}
+
+case "$ONLY" in
+  all|"") run_qc; run_proc;;
+  qc) run_qc;;
+  somatic_processing) run_proc;;
+  *) echo "ERROR: unsupported --only '$ONLY'"; usage; exit 2;;
+esac
+
+echo "[OK] Figs3 finished."

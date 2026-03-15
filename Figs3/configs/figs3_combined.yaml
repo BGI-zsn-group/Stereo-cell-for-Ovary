@@ -1,7 +1,5 @@
-# NOTE: For GitHub reproducibility, update input paths under
-#   modules.figs3_somatic_processing.groups[*].items[*].rds
-# to match your local QC-processed Seurat objects.
 figure: figs3
+
 modules:
   figs3_qc:
     qc_enabled: true
@@ -14,36 +12,30 @@ modules:
     qc_percent_mt_max: 20
     qc_umi_iqr_multiplier: 1.5
     qc_doublet_rate: 0.05
+
   figs3_somatic_processing:
+    # Preferred mode: read the QC output produced by figs3_qc
+    input_rds: results/Figs3/qc/somatic.qc_processed.rds
+
+    # If the input RDS does not already contain a usable `sample` column,
+    # map orig.ident -> developmental stage / sample label here.
+    sample_map:
+      PD14-1: P14
+      PD14-2: P14
+      PD21-1: P21
+      PD21-3: P21
+      PD49-1: P49
+      PD49-2: P49
+
     out_dir: results/Figs3/somatic_processing
     prefix: somatic
-    groups:
-    - name: PD14
-      sample_label: P14
-      items:
-      - id: PD14-1
-        rds: data/Figs3/PD14/PD14_1.qc_processed.rds
-      - id: PD14-2
-        rds: data/Figs3/PD14/PD14_2.qc_processed.rds
-    - name: PD21
-      sample_label: P21
-      items:
-      - id: PD21-1
-        rds: data/Figs3/PD21/PD21_1_no_doublets.rds
-      - id: PD21-3
-        rds: data/Figs3/PD21/PD21_3_no_doublets.rds
-    - name: PD49
-      sample_label: P49
-      items:
-      - id: PD49-1
-        rds: data/Figs3/PD49/PD49_1.qc_processed.rds
-      - id: PD49-2
-        rds: data/Figs3/PD49/PD49_2.qc_processed.rds
-    exclude_regex: ^(Rp|mt)
+
+    exclude_regex: "^(Rp|mt)"
     nfeatures_round1: 2000
     nfeatures_round2: 2000
     manual_exclude_genes_round1: []
     manual_exclude_genes_round2: []
+
     pipeline_round1:
       harmony_group: orig.ident
       pca_dims: 30
@@ -53,6 +45,7 @@ modules:
       theta: 1.5
       lambda: 1.5
       sigma: 0.05
+
     pipeline_round2:
       harmony_group: orig.ident
       pca_dims: 40
@@ -62,52 +55,27 @@ modules:
       theta: 1.5
       lambda: 1.5
       sigma: 0.03
-    exclude_clusters_round1:
-    - '3'
-    - '14'
-    exclude_clusters_round2:
-    - '25'
-    - '12'
+
+    exclude_clusters_round1: ["3", "14"]
+    exclude_clusters_round2: ["25", "12"]
+
     out_round1_rds: results/Figs3/somatic_processing/somatic.round1.rds
     out_final_rds: results/Figs3/somatic_processing/somatic.final.rds
+
     celltype_map:
-      GC_Preantral:
-      - '13'
-      - '0'
-      GC_Antral_Mitotic:
-      - '9'
-      GC_Antral_Mural:
-      - '5'
-      - '4'
-      GC_Atretic:
-      - '2'
-      MC_Early_theca:
-      - '7'
-      - '8'
-      - '16'
-      MC_Myoid_theca:
-      - '3'
-      MC_Steroidogenic_theca:
-      - '10'
-      - '14'
-      MC_Fibroblast_like_stroma:
-      - '11'
-      - '6'
-      MC_Steroidogenic_like_stroma:
-      - '1'
-      Vascular_Endothelial:
-      - '15'
-      Lymphatic_Endothelial:
-      - '24'
-      Epithelial:
-      - '22'
-      Immune:
-      - '17'
-      - '21'
-      - '20'
-      Luteal_regressing:
-      - '23'
-      Luteinizing_mural:
-      - '18'
-      Pericyte:
-      - '19'
+      GC_Preantral: ["13", "0"]
+      GC_Antral_Mitotic: ["9"]
+      GC_Antral_Mural: ["5", "4"]
+      GC_Atretic: ["2"]
+      MC_Early_theca: ["7", "8", "16"]
+      MC_Myoid_theca: ["3"]
+      MC_Steroidogenic_theca: ["10", "14"]
+      MC_Fibroblast_like_stroma: ["11", "6"]
+      MC_Steroidogenic_like_stroma: ["1"]
+      Vascular_Endothelial: ["15"]
+      Lymphatic_Endothelial: ["24"]
+      Epithelial: ["22"]
+      Immune: ["17", "21", "20"]
+      Luteal_regressing: ["23"]
+      Luteinizing_mural: ["18"]
+      Pericyte: ["19"]

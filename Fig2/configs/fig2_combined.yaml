@@ -39,7 +39,7 @@ modules:
       - sample
 
     dims_pass2: "1:30"
-    res_pass2: 1.4
+    res_pass2: 1.2
     theta_pass2: 1
     harmony_vars_pass2:
       - sample

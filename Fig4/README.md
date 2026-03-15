@@ -38,7 +38,6 @@ Fig4/
 - Python ≥ 3.9
 - 建议用 conda 环境
 - 依赖：`anndata`, `scanpy`, `numpy`, `pandas`, `scikit-learn`, `cell2location`, `scvi-tools`, `torch`
-  - 具体版本请以你论文复现环境为准
 
 ## 运行方式
 

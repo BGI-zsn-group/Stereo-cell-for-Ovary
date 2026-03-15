@@ -22,7 +22,7 @@ Fig5/
 
 - `run_fig5_combined.sh`：**推荐入口**。从 combined YAML 中提取 `modules.fig5_cellchat_build`，再调用 R 脚本运行。
 - `fig5_cellchat_build.R`：主流程脚本（合并对象 → 分阶段子集 → CellChat pipeline → liftCellChat → 导出）。
-- `configs/fig5_combined.yaml`：配置文件（发布到 GitHub 后请把输入路径改为你的本地路径）。
+- `configs/fig5_combined.yaml`：配置文件。
 
 ---
 

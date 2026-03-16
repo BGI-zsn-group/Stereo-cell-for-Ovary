@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -17,7 +16,7 @@ Fig2 runner
 
 Usage:
   bash Fig2/run_fig2_combined.sh [--only harmony|all]
-                                 [-i INPUTDIR] [-o OUTDIR]
+                                 [-i INPUTDIR] [-o OUT]
                                  [--set key=value]...
                                  [--config PATH | --config-dir DIR]
                                  [--scripts-dir DIR]
@@ -30,8 +29,11 @@ Usage:
 Short flags:
   -i, --in   INPUTDIR   Common input directory override (repeatable; last wins).
                         Mapped to: rds_dir and io.rds_dir
-  -o, --out  OUTDIR     Common output directory override (repeatable; last wins).
-                        Mapped to: out_dir/output_dir/results_dir and out_rds=OUTDIR/obj_oo.rds
+  -o, --out  OUT       Common output override (repeatable; last wins).
+                        If OUT ends with .rds, treat it as the full output file path
+                        and map to: out=OUT
+                        Otherwise, treat it as an output directory and map to:
+                        out=OUT/obj_oo.rds
 
 Overrides:
   --set key=value       Override any field inside the extracted module config. Repeatable.
@@ -45,11 +47,14 @@ Examples:
   # Set input + output quickly
   bash Fig2/run_fig2_combined.sh -i /data/originalRDS -o results/Fig2
 
+  # Set input + exact output filename
+  bash Fig2/run_fig2_combined.sh -i /data/originalRDS -o results/Fig2/my_obj.rds
+
   # Use a specific config file
   bash Fig2/run_fig2_combined.sh --config Fig2/configs/fig2_combined.yaml
 
   # Precise override
-  bash Fig2/run_fig2_combined.sh --set io.rds_dir=/data/originalRDS --set out_rds=results/Fig2/obj_oo.rds
+  bash Fig2/run_fig2_combined.sh --set io.rds_dir=/data/originalRDS --set out=results/Fig2/obj_oo.rds
 EOF
 }
 
@@ -72,7 +77,7 @@ R_BIN="${R_BIN:-Rscript}"
 declare -A SCRIPT_OVERRIDE=()
 declare -a OVERRIDES=()
 declare -a IN_PATHS=()
-declare -a OUT_DIRS=()
+declare -a OUT_PATHS=()
 
 run_cmd () {
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -101,7 +106,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --set) OVERRIDES+=("${2:?ERROR: --set requires key=value}"); shift 2;;
     -i|--in) IN_PATHS+=("${2:?ERROR: -i/--in requires a dir}"); shift 2;;
-    -o|--out) OUT_DIRS+=("${2:?ERROR: -o/--out requires a dir}"); shift 2;;
+    -o|--out) OUT_PATHS+=("${2:?ERROR: -o/--out requires a path}"); shift 2;;
     --dry-run) DRY_RUN=1; shift 1;;
     --print-config) PRINT_CONFIG=1; shift 1;;
     --keep-config) KEEP_CONFIG=1; shift 1;;
@@ -117,9 +122,14 @@ done
 declare -a EXPLICIT_OVERRIDES=("${OVERRIDES[@]}")
 OVERRIDES=()
 
-if [[ "${#OUT_DIRS[@]}" -gt 0 ]]; then
-  od="${OUT_DIRS[-1]}"
-  OVERRIDES+=("out_dir=$od" "output_dir=$od" "results_dir=$od" "out_rds=$od/obj_oo.rds")
+if [[ "${#OUT_PATHS[@]}" -gt 0 ]]; then
+  op="${OUT_PATHS[-1]}"
+  if [[ "$op" == *.rds ]]; then
+    OVERRIDES+=("out=$op")
+  else
+    op="${op%/}"
+    OVERRIDES+=("out=$op/obj_oo.rds")
+  fi
 fi
 
 if [[ "${#IN_PATHS[@]}" -gt 0 ]]; then
@@ -213,6 +223,11 @@ for ov in overrides:
     k = k.strip()
     if k.startswith(module_key + "."):
         k = k[len(module_key) + 1 :]
+
+    # Backward compatibility: older wrappers/docs used out_rds.
+    if k == "out_rds":
+        k = "out"
+
     set_path(mod, k, v)
 
 yaml.safe_dump(mod, open(out_path, "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)

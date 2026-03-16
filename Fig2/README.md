@@ -50,6 +50,22 @@ bash Fig2/run_fig2_combined.sh \
   - 如果以 `.rds` 结尾：视为**输出文件路径**，直接写入 `out=/.../...rds`
   - 否则：视为**输出目录**，默认写入 `out=<out_dir>/obj_oo.rds`
 
+例如：
+
+```bash
+bash Fig2/run_fig2_combined.sh \
+  -i /path/to/per_sample_rds_dir \
+  -o /path/to/output_dir
+
+# 实际输出为 /path/to/output_dir/obj_oo.rds
+
+bash Fig2/run_fig2_combined.sh \
+  -i /path/to/per_sample_rds_dir \
+  -o /path/to/output_dir/my_result.rds
+
+# 实际输出为 /path/to/output_dir/my_result.rds
+```
+
 你也可以用 `--set key=value` 覆盖任意配置项（可重复）：
 
 ```bash

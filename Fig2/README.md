@@ -57,7 +57,7 @@ bash Fig2/run_fig2_combined.sh \
   -i /path/to/per_sample_rds_dir \
   -o /path/to/output_dir \
   --set seed=1 \
-  --set res_pass2=1.4 \
+  --set res_pass2=1.2 \
   --set theta_pass2=1
 ```
 

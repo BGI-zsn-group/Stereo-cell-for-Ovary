@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -114,7 +113,10 @@ done
 # Build overrides:
 #   short flags first, explicit --set last (so --set wins)
 # -------------------------
-declare -a EXPLICIT_OVERRIDES=("${OVERRIDES[@]}")
+declare -a EXPLICIT_OVERRIDES=()
+if (( ${#OVERRIDES[@]} > 0 )); then
+  EXPLICIT_OVERRIDES=("${OVERRIDES[@]}")
+fi
 OVERRIDES=()
 
 if [[ "${#OUT_DIRS[@]}" -gt 0 ]]; then
@@ -127,7 +129,9 @@ if [[ "${#IN_PATHS[@]}" -gt 0 ]]; then
   OVERRIDES+=("rds_dir=$ip" "io.rds_dir=$ip")
 fi
 
-OVERRIDES+=("${EXPLICIT_OVERRIDES[@]}")
+if (( ${#EXPLICIT_OVERRIDES[@]} > 0 )); then
+  OVERRIDES+=("${EXPLICIT_OVERRIDES[@]}")
+fi
 
 discover_config () {
   if [[ -n "$CONFIG" ]]; then echo "$CONFIG"; return 0; fi
@@ -177,7 +181,8 @@ extract_module () {
     [[ -n "${ov:-}" ]] && clean+=("$ov")
   done
 
-  "$PYTHON_BIN" - <<'PY' "$combined" "$module_key" "$out_cfg" "${clean[@]}"
+  if (( ${#clean[@]} > 0 )); then
+    "$PYTHON_BIN" - <<'PY' "$combined" "$module_key" "$out_cfg" "${clean[@]}"
 import sys
 try:
     import yaml
@@ -217,11 +222,57 @@ for ov in overrides:
 
 yaml.safe_dump(mod, open(out_path, "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
 PY
+  else
+    "$PYTHON_BIN" - <<'PY' "$combined" "$module_key" "$out_cfg"
+import sys
+try:
+    import yaml
+except Exception:
+    raise SystemExit("ERROR: missing dependency pyyaml. Install: pip install pyyaml")
+
+combined_path, module_key, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+overrides = sys.argv[4:]
+
+root = yaml.safe_load(open(combined_path, "r", encoding="utf-8")) or {}
+mods = root.get("modules") or {}
+if module_key not in mods:
+    raise SystemExit(f"ERROR: module '{module_key}' not found under `modules` in {combined_path}")
+mod = mods[module_key]
+
+def set_path(d, path, value):
+    keys = [k for k in path.split(".") if k]
+    cur = d
+    for k in keys[:-1]:
+        if not isinstance(cur, dict):
+            raise SystemExit(f"ERROR: cannot set '{path}': '{k}' is not a mapping")
+        if k not in cur or cur[k] is None:
+            cur[k] = {}
+        cur = cur[k]
+    if not keys:
+        raise SystemExit("ERROR: empty override key")
+    cur[keys[-1]] = value
+
+for ov in overrides:
+    if not ov or "=" not in ov:
+        raise SystemExit(f"ERROR: override must be key=value (got {ov})")
+    k, v = ov.split("=", 1)
+    k = k.strip()
+    if k.startswith(module_key + "."):
+        k = k[len(module_key) + 1 :]
+    set_path(mod, k, v)
+
+yaml.safe_dump(mod, open(out_path, "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
+PY
+  fi
 }
 
 COMBINED="$(discover_config)"
 TMP_CFG="$(mktemp -t fig2_cfg_XXXXXX.yaml)"
-extract_module "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "${OVERRIDES[@]}"
+if (( ${#OVERRIDES[@]} > 0 )); then
+  extract_module "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "${OVERRIDES[@]}"
+else
+  extract_module "$COMBINED" "$MODULE_KEY" "$TMP_CFG"
+fi
 
 [[ "$PRINT_CONFIG" -eq 1 ]] && echo "[config] $TMP_CFG"
 

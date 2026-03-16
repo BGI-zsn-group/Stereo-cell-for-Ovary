@@ -13,7 +13,7 @@
 #   - Saves the integrated Seurat object as an RDS.
 #
 # Recommended way to run (repo wrapper)
-#   bash Fig2/run_fig2_combined.sh -i <rds_dir> -o <out_dir>
+#   bash Fig2/run_fig2_combined.sh -i <rds_dir> -o <out_or_out_dir>
 #
 # Run this script directly (module-level YAML)
 #   Rscript Fig2/fig2_harmony_integration.R --config <fig2_harmony.yaml>
@@ -88,7 +88,6 @@ as_vars <- function(x) {
     v <- trimws(unlist(strsplit(x, ",", fixed = TRUE)))
     return(v[nzchar(v)])
   }
-  # already a vector/list from YAML
   v <- unlist(x)
   v <- trimws(as.character(v))
   v[nzchar(v)]
@@ -103,15 +102,48 @@ parse_dims <- function(x, default_seq) {
   if (grepl(":", x, fixed = TRUE)) {
     p <- as.integer(trimws(unlist(strsplit(x, ":", fixed = TRUE))))
     return(seq(p[1], p[2]))
-  } else {
-    return(as.integer(as_vars(x)))
   }
+  as.integer(as_vars(x))
 }
 
 write_text <- function(path, txt) {
   con <- file(path, open = "wt", encoding = "UTF-8")
   on.exit(close(con), add = TRUE)
   writeLines(txt, con = con)
+}
+
+merge_obj_list <- function(obj_list, project = "Fig2") {
+  if (length(obj_list) == 0) stop("[fig2] merge_obj_list() received empty object list.")
+  if (length(obj_list) == 1) {
+    obj <- obj_list[[1]]
+    obj@project.name <- project
+    return(obj)
+  }
+  merge(obj_list[[1]], y = obj_list[-1], add.cell.ids = names(obj_list), project = project)
+}
+
+remove_clusters_safe <- function(obj, remove_clusters) {
+  if (length(remove_clusters) == 0) return(obj)
+
+  message("[fig2] Removing clusters after pass1: ", paste(remove_clusters, collapse = ", "))
+
+  if (!"seurat_clusters" %in% colnames(obj@meta.data)) {
+    stop("[fig2] 'seurat_clusters' not found in obj@meta.data after FindClusters().", call. = FALSE)
+  }
+
+  Idents(obj) <- "seurat_clusters"
+
+  remove_clusters_chr <- as.character(remove_clusters)
+  present_clusters <- intersect(remove_clusters_chr, levels(Idents(obj)))
+
+  if (length(present_clusters) == 0) {
+    message("[fig2] No requested clusters found in current object; skip removal.")
+    return(obj)
+  }
+
+  obj <- subset(obj, idents = present_clusters, invert = TRUE)
+  message("[fig2] Removed present clusters: ", paste(present_clusters, collapse = ", "))
+  obj
 }
 
 # ---------- config loading ----------
@@ -162,7 +194,7 @@ if (!dir.exists(out_dir) && out_dir != ".") dir.create(out_dir, recursive = TRUE
 
 # ---------- run ----------
 message("[fig2] Reading RDS from: ", rds_dir)
-rds_files <- list.files(path = rds_dir, pattern = pattern, full.names = TRUE)
+rds_files <- sort(list.files(path = rds_dir, pattern = pattern, full.names = TRUE))
 if (length(rds_files) == 0) stop("[fig2] No RDS files found in: ", rds_dir)
 
 obj_list <- lapply(rds_files, readRDS)
@@ -184,16 +216,14 @@ obj_list <- lapply(obj_list, function(x) SCTransform(x, variable.features.n = sc
 
 features <- SelectIntegrationFeatures(object.list = obj_list, nfeatures = nfeatures_integrate)
 
-# Use a reference gene list (obj not defined yet)
 ref_genes <- rownames(obj_list[[1]])
 fl_genes <- grep(exclude_regex, ref_genes, value = TRUE)
-
 features <- setdiff(features, fl_genes)
 if (length(exclude_genes) > 0) features <- setdiff(features, exclude_genes)
 message("[fig2] Pass1: features kept = ", length(features))
 
 message("[fig2] Merging ...")
-obj <- merge(obj_list[[1]], y = obj_list[-1], add.cell.ids = names(obj_list), project = "Fig2")
+obj <- merge_obj_list(obj_list, project = "Fig2")
 DefaultAssay(obj) <- "RNA"
 
 message("[fig2] Pass1: SCTransform on merged (residual.features) ...")
@@ -207,10 +237,7 @@ obj <- FindClusters(obj, reduction = "harmony", resolution = res_pass1)
 obj <- RunUMAP(obj, reduction = "harmony", dims = dims_pass1)
 
 # Remove contamination clusters
-if (length(remove_clusters) > 0) {
-  message("[fig2] Removing clusters after pass1: ", paste(remove_clusters, collapse = ", "))
-  obj <- subset(obj, subset = !(seurat_clusters %in% remove_clusters))
-}
+obj <- remove_clusters_safe(obj, remove_clusters)
 
 # Pass 2: re-run after filtering
 message("[fig2] Pass2: split by sample and re-run SCTransform ...")

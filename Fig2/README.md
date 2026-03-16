@@ -13,7 +13,7 @@ Fig2/
 ```
 
 - `run_fig2_combined.sh`：**推荐入口**。从 combined YAML 中提取 `modules.fig2_harmony` 这一段配置（module），然后调用 R 脚本运行。
-- `fig2_harmony_integration.R`：核心 R pipeline（也支持直接运行，但要求传入“module-level”的 YAML，见下文）。
+- `fig2_harmony_integration.R`：核心 R pipeline（推荐使用 `.R` 文件名；runner 也兼容旧的 `.txt` 名称，但建议统一改为 `.R`）。
 - `configs/fig2_combined.yaml`：combined 配置文件（包含 `figure:` 与 `modules:`；本目录使用的模块为 `fig2_harmony`）。
 
 ## 输入（Inputs）
@@ -49,22 +49,6 @@ bash Fig2/run_fig2_combined.sh \
 - `-o/--out` 是便捷参数：
   - 如果以 `.rds` 结尾：视为**输出文件路径**，直接写入 `out=/.../...rds`
   - 否则：视为**输出目录**，默认写入 `out=<out_dir>/obj_oo.rds`
-
-例如：
-
-```bash
-bash Fig2/run_fig2_combined.sh \
-  -i /path/to/per_sample_rds_dir \
-  -o /path/to/output_dir
-
-# 实际输出为 /path/to/output_dir/obj_oo.rds
-
-bash Fig2/run_fig2_combined.sh \
-  -i /path/to/per_sample_rds_dir \
-  -o /path/to/output_dir/my_result.rds
-
-# 实际输出为 /path/to/output_dir/my_result.rds
-```
 
 你也可以用 `--set key=value` 覆盖任意配置项（可重复）：
 
@@ -132,6 +116,7 @@ Rscript Fig2/fig2_harmony_integration.R --config Fig2/configs/fig2_harmony.yaml
 - **`No RDS files found`**：检查 `rds_dir` 与 `pattern`。
 - **`missing pyyaml`**：在运行 wrapper 的 Python 环境里安装 `pyyaml`。
 - **R 提示缺少 `yaml`**：`install.packages('yaml')`。
+- **Pass1 删除 cluster 时报 `None of the requested variables were found`**：请使用最新版 `fig2_harmony_integration.R`。当前版本已改为基于 `Idents()` 安全删除 cluster，不再依赖不稳定的 `subset = !(seurat_clusters %in% remove_clusters)` 表达式。
 - Seurat/Harmony 在 merge 或 SCTransform 报错：通常是输入对象不规范或 assay/基因命名不一致；请确保每个输入 RDS 都是可用的 Seurat object，并且基因标识一致（同一参考基因集合）。
 
 ## 可复现性说明

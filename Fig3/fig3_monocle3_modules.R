@@ -156,6 +156,13 @@ pr_ids_txt <- if (!is.null(cfg$out_pr_deg_ids)) cfg$out_pr_deg_ids else file.pat
 modules_csv <- if (!is.null(cfg$out_gene_modules_csv)) cfg$out_gene_modules_csv else file.path(out_dir, "gene_modules.csv")
 prefilter_modules_csv <- if (!is.null(cfg$out_prefilter_modules_csv)) cfg$out_prefilter_modules_csv else file.path(out_dir, "gene_modules_prefilter.csv")
 
+ensure_parent_dir <- function(path) {
+  d <- dirname(path)
+  if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+}
+
+for (p in c(out_obj_rds, deg_csv, pr_ids_txt, modules_csv, prefilter_modules_csv)) ensure_parent_dir(p)
+
 message("[fig3] Loading Seurat object: ", in_rds)
 obj <- readRDS(in_rds)
 if (is.null(obj$seurat_clusters)) stop("Seurat object missing meta.data column: seurat_clusters", call. = FALSE)

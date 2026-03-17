@@ -98,10 +98,10 @@ cfg <- yaml::read_yaml(args$config)
 # ---- Inputs ----
 in_rds <- cfg$scenic_input_rds
 if (is.null(in_rds) || !nzchar(as.character(in_rds))) {
-  if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds))) {
-    in_rds <- cfg$out_obj_rds
-  } else if (!is.null(cfg$input_rds) && nzchar(as.character(cfg$input_rds))) {
+  if (!is.null(cfg$input_rds) && nzchar(as.character(cfg$input_rds))) {
     in_rds <- cfg$input_rds
+  } else if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds)) && file.exists(cfg$out_obj_rds)) {
+    in_rds <- cfg$out_obj_rds
   } else {
     in_rds <- "obj_oo.rds"
   }
@@ -130,7 +130,8 @@ if (!inherits(obj, "Seurat")) stop("Expected a Seurat object in input RDS.", cal
 # Filter stage
 if (stage_col %in% colnames(obj@meta.data)) {
   message("[fig3-scenic1] Filter stage: ", stage_col, " != ", exclude_stage)
-  obj <- subset(obj, subset = get(stage_col) != exclude_stage)
+  keep_cells <- rownames(obj@meta.data)[as.character(obj@meta.data[[stage_col]]) != exclude_stage]
+  obj <- subset(obj, cells = keep_cells)
 } else {
   message("[fig3-scenic1] stage column not found: ", stage_col, " (skip filtering)")
 }

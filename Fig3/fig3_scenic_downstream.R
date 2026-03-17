@@ -99,10 +99,10 @@ if (!file.exists(loom_path)) stop("Missing scenic_result_loom: ", loom_path, cal
 
 in_rds <- cfg$scenic_downstream_input_rds
 if (is.null(in_rds) || !nzchar(as.character(in_rds))) {
-  if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds))) {
-    in_rds <- cfg$out_obj_rds
-  } else if (!is.null(cfg$input_rds) && nzchar(as.character(cfg$input_rds))) {
+  if (!is.null(cfg$input_rds) && nzchar(as.character(cfg$input_rds))) {
     in_rds <- cfg$input_rds
+  } else if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds)) && file.exists(cfg$out_obj_rds)) {
+    in_rds <- cfg$out_obj_rds
   } else {
     in_rds <- "obj_oo.rds"
   }
@@ -152,7 +152,8 @@ obj <- readRDS(in_rds)
 if (!inherits(obj, "Seurat")) stop("Expected Seurat object in scenic_downstream_input_rds", call. = FALSE)
 if (!stage_col %in% colnames(obj@meta.data)) stop("meta.data missing stage column: ", stage_col, call. = FALSE)
 
-obj <- subset(obj, subset = get(stage_col) != exclude_stage)
+keep_cells <- rownames(obj@meta.data)[as.character(obj@meta.data[[stage_col]]) != exclude_stage]
+obj <- subset(obj, cells = keep_cells)
 
 # Match cells between Seurat and AUC
 common_cells <- intersect(colnames(obj), colnames(regulonAUC))

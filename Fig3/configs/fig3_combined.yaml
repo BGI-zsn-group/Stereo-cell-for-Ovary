@@ -4,6 +4,8 @@ modules:
     input_rds: obj_oo.rds
     out_dir: results/Fig3
     out_obj_rds: results/Fig3/obj_with_pseudotime.rds
+    scenic_input_rds: ""
+    scenic_downstream_input_rds: ""
     num_dim: 50
     root_cluster: '6'
     cores: 8
@@ -59,6 +61,7 @@ modules:
     scenic_tf_list: allTFs_mm.txt
     scenic_rankings_feather: mm10_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
     scenic_motif_annotations: motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl
+    scenic_motif_annotation: ""
     scenic_pyscenic_bin: pyscenic
     scenic_grn_workers: 14
     scenic_grn_method: grnboost2
@@ -82,7 +85,6 @@ modules:
     scenic_rss_plot_png: results/Fig3/scenic/downstream/rss_plot.png
     scenic_regulons_rds: results/Fig3/scenic/downstream/regulons_list.rds
     scenic_auc_thresholds_rds: results/Fig3/scenic/downstream/regulon_auc_thresholds.rds
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
@@ -185,8 +187,8 @@ modules:
     plot_cor_method: pearson
     plot_out_cor_txt: results/Fig3/length_vs_pseudotime_correlation.txt
   fig3_monocle3_full_latest:
-    rds2h5ad_input_rds: ''
-    rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
+    rds2h5ad_input_rds: oocyte_some_c1_filter_1211.rds
+    rds2h5ad_output_h5ad: oocyte_some_c1_filter_1211.h5ad
     rds2h5ad_main_layer: data
     input_rds: obj_oo.rds
     out_dir: results/Fig3
@@ -232,7 +234,7 @@ modules:
       - '5'
       M5:
       - '2'
-    sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
+    sctour_input_h5ad: oocyte_some_c1_filter_1211.h5ad
     sctour_out_dir: results/Fig3/sctour
     sctour_output_h5ad: results/Fig3/sctour/oocyte_sctour_tnode.h5ad
     sctour_ptime_csv: results/Fig3/sctour/ptime.csv
@@ -288,7 +290,6 @@ modules:
       - '5'
       M5:
       - '2'
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
@@ -392,7 +393,7 @@ modules:
       - '5'
       M5:
       - '2'
-    sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
+    sctour_input_h5ad: oocyte_some_c1_filter_1211.h5ad
     sctour_out_dir: results/Fig3/sctour
     sctour_output_h5ad: results/Fig3/sctour/oocyte_sctour_tnode.h5ad
     sctour_ptime_csv: results/Fig3/sctour/ptime.csv
@@ -455,7 +456,6 @@ modules:
     scenic_assay: RNA
     scenic_slot: counts
     scenic_transpose: true
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
@@ -535,7 +535,6 @@ modules:
     scenic_ctx_mode: dask_multiprocessing
     scenic_ctx_mask_dropouts: true
     scenic_aucell_workers: 16
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
@@ -631,7 +630,6 @@ modules:
     scenic_rss_plot_png: results/Fig3/scenic/downstream/rss_plot.png
     scenic_regulons_rds: results/Fig3/scenic/downstream/regulons_list.rds
     scenic_auc_thresholds_rds: results/Fig3/scenic/downstream/regulon_auc_thresholds.rds
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
@@ -736,7 +734,6 @@ modules:
     scenic_rss_plot_png: results/Fig3/scenic/downstream/rss_plot.png
     scenic_regulons_rds: results/Fig3/scenic/downstream/regulons_list.rds
     scenic_auc_thresholds_rds: results/Fig3/scenic/downstream/regulon_auc_thresholds.rds
-    rds2h5ad_input_rds: ''
     rds2h5ad_output_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad
     rds2h5ad_main_layer: data
     sctour_input_h5ad: results/Fig3/sctour/seurat_to_h5ad.h5ad

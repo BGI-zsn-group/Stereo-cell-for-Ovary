@@ -76,9 +76,9 @@ def main() -> None:
 
     tf_list = Path(cfg.get("scenic_tf_list", "allTFs_mm.txt"))
     rankings = Path(cfg.get("scenic_rankings_feather", "mm10_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather"))
-    motif_ann = Path(cfg.get("scenic_motif_annotations", "motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl"))
+    motif_ann = Path(cfg.get("scenic_motif_annotations") or cfg.get("scenic_motif_annotation") or "motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl")
 
-    for p, name in [(tf_list, "scenic_tf_list"), (rankings, "scenic_rankings_feather"), (motif_ann, "scenic_motif_annotations")]:
+    for p, name in [(tf_list, "scenic_tf_list"), (rankings, "scenic_rankings_feather"), (motif_ann, "scenic_motif_annotations/scenic_motif_annotation")]:
         if not p.exists():
             raise FileNotFoundError(f"Missing {name}: {p}")
 

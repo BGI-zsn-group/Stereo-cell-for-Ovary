@@ -112,7 +112,7 @@ if [[ ${#OUT_DIRS[@]} -gt 0 ]]; then
     OV_SHORT+=("out_obj_rds=$od_file")
   fi
   OV_SHORT+=("out_dir=$od" "output_dir=$od" "results_dir=$od")
-  OV_SHORT+=("out_obj_rds=$od/obj_with_pseudotime.rds" "out_deg_csv=$od/deg_graph_test.csv" "out_pr_deg_ids=$od/pr_deg_ids.txt" "out_gene_modules_csv=$od/gene_modules.csv" "out_prefilter_modules_csv=$od/gene_modules_prefilter.csv")
+  OV_SHORT+=("out_obj_rds=$od/obj_with_pseudotime.rds" "out_deg_csv=$od/deg_graph_test.csv" "out_pr_deg_ids=$od/pr_deg_ids.txt" "out_gene_modules_csv=$od/gene_modules.csv")
   OV_SHORT+=("plot_out_pdf=$od/length_vs_pseudotime.pdf" "plot_out_png=$od/length_vs_pseudotime.png" "plot_out_cor_txt=$od/length_vs_pseudotime_correlation.txt")
   OV_SHORT+=("go_out_csv=$od/GO_BP_merged_modules_simplified.csv")
   OV_SHORT+=("scenic_out_dir=$od/scenic" "scenic_out_csv=$od/scenic/oocyte_1211_withoutMII.csv" "scenic_loom=$od/scenic/oocyte_1211_withoutMII.loom")

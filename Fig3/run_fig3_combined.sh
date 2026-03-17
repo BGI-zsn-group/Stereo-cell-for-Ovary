@@ -8,37 +8,12 @@ Usage:
                                  [--set key=value]... [--config PATH|--config-dir DIR]
                                  [--scripts-dir DIR] [--script step=PATH]... [--module-key KEY]
                                  [--dry-run]
-
-Steps:
-  monocle3,length,go,scenic1,scenic2,scenic_downstream,rds2h5ad,sctour
-
-Common behavior:
-  - -i is interpreted by step type:
-      * monocle3 / length / scenic* / rds2h5ad: Seurat .rds input
-      * sctour only with .h5ad input: set sctour_input_h5ad automatically
-  - -o is usually an output directory.
-    If -o ends with .rds, it is treated as out_obj_rds for monocle3 output and
-    out_dir is derived from its parent directory.
-
-SCENIC naming:
-  - By default, SCENIC filenames are derived from either:
-      1) --set scenic_prefix=...   (highest priority)
-      2) basename of -i input file (without extension)
-  - If scenic_exclude_stage_value is set (default MII), the default basename
-    becomes: <basename>_without<stage>
-  - Example:
-      -i result/oocyte_edit_1216.rds
-      -> result/Fig3/scenic/oocyte_edit_1216_withoutMII.csv
-         result/Fig3/scenic/oocyte_edit_1216_withoutMII.loom
-         result/Fig3/scenic/adj_oocyte_edit_1216_withoutMII.tsv
-         result/Fig3/scenic/reg_oocyte_edit_1216_withoutMII.csv
-         result/Fig3/scenic/oocyte_edit_1216_withoutMII_result.loom
+Steps: monocle3,length,go,scenic1,scenic2,scenic_downstream,rds2h5ad,sctour
 USAGE
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR_DEFAULT="$SCRIPT_DIR/configs"
-
 ONLY="all"; CONFIG=""; CONFIG_DIR="$CONFIG_DIR_DEFAULT"; SCRIPTS_DIR="$SCRIPT_DIR"; MODULE_KEY="fig3"; DRY_RUN=0
 PYTHON_BIN="${PYTHON_BIN:-python}"; R_BIN="${R_BIN:-Rscript}"
 
@@ -92,100 +67,41 @@ resolve_script(){
   local step="$1"; shift
   local ov="${SCRIPT_OVERRIDE[$step]-}"
   if [[ -n "$ov" ]]; then
-    if [[ "$ov" = /* ]]; then
-      [[ -f "$ov" ]] || { echo "ERROR: script not found: $ov" >&2; exit 1; }
-      echo "$ov"; return 0
-    fi
+    if [[ "$ov" = /* ]]; then [[ -f "$ov" ]] || { echo "ERROR: script not found: $ov" >&2; exit 1; }; echo "$ov"; return 0; fi
     [[ -f "$SCRIPTS_DIR/$ov" ]] || { echo "ERROR: script not found: $SCRIPTS_DIR/$ov" >&2; exit 1; }
     echo "$SCRIPTS_DIR/$ov"; return 0
   fi
   local cand
-  for cand in "$@"; do
-    [[ -f "$SCRIPTS_DIR/$cand" ]] && { echo "$SCRIPTS_DIR/$cand"; return 0; }
-  done
+  for cand in "$@"; do [[ -f "$SCRIPTS_DIR/$cand" ]] && { echo "$SCRIPTS_DIR/$cand"; return 0; }; done
   echo "ERROR: cannot find script for step '$step' under $SCRIPTS_DIR" >&2
   exit 1
 }
 
 run_cmd(){
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    printf '+'; printf ' %q' "$@"; printf '\n'
-  else
-    "$@"
-  fi
+  if [[ "$DRY_RUN" -eq 1 ]]; then printf '+'; printf ' %q' "$@"; printf '\n'; else "$@"; fi
 }
 
-get_last_input(){
-  if ((${#IN_PATHS[@]})); then
-    printf '%s' "${IN_PATHS[-1]}"
-  fi
-}
-
-get_explicit_override(){
-  local want="$1"
-  local kv key val
-  if ((${#OV_EXPL[@]} == 0)); then
-    return 1
-  fi
-  for kv in "${OV_EXPL[@]}"; do
+explicit_override_value(){
+  local key="$1" kv k v
+  for kv in "${OV_EXPL[@]:-}"; do
     [[ "$kv" == *=* ]] || continue
-    key="${kv%%=*}"
-    val="${kv#*=}"
-    if [[ "$key" == "$want" || "$key" == "$MODULE_KEY.$want" ]]; then
-      printf '%s' "$val"
-      return 0
-    fi
+    k="${kv%%=*}"; v="${kv#*=}"
+    [[ "$k" == "$key" || "$k" == "$MODULE_KEY.$key" ]] && { echo "$v"; return 0; }
   done
   return 1
 }
 
-sanitize_name(){
-  local s="$1"
-  s="${s// /_}"
-  s="$(printf '%s' "$s" | sed 's/[^A-Za-z0-9._-]/_/g')"
-  s="$(printf '%s' "$s" | sed 's/__*/_/g; s/^_//; s/_$//')"
-  printf '%s' "$s"
-}
-
-derive_scenic_prefix(){
-  local explicit prefix base in_path stage
-
-  if explicit="$(get_explicit_override scenic_prefix 2>/dev/null)"; then
-    [[ -n "$explicit" ]] && { printf '%s' "$(sanitize_name "$explicit")"; return 0; }
+if [[ ${#IN_PATHS[@]} -gt 0 ]]; then
+  ip="${IN_PATHS[-1]}"
+  OV_SHORT+=("input_rds=$ip" "rds2h5ad_input_rds=$ip")
+  if ! has_step monocle3; then
+    OV_SHORT+=("length_input_rds=$ip" "scenic_input_rds=$ip" "scenic_downstream_input_rds=$ip")
   fi
-
-  in_path="$(get_last_input)"
-  if [[ -n "$in_path" ]]; then
-    base="$(basename "$in_path")"
-    base="${base%.*}"
-  else
-    base="scenic_input"
-  fi
-  base="$(sanitize_name "$base")"
-
-  if stage="$(get_explicit_override scenic_exclude_stage_value 2>/dev/null)"; then
-    :
-  else
-    stage="MII"
-  fi
-  stage="$(sanitize_name "$stage")"
-
-  if [[ -n "$stage" ]]; then
-    prefix="${base}_without${stage}"
-  else
-    prefix="$base"
-  fi
-  printf '%s' "$prefix"
-}
-
-# compatibility aliases for commonly mistyped keys
-if motif_one="$(get_explicit_override scenic_motif_annotation 2>/dev/null)"; then
-  if ! get_explicit_override scenic_motif_annotations >/dev/null 2>&1; then
-    OV_SHORT+=("scenic_motif_annotations=$motif_one")
+  if [[ "$ip" == *.h5ad ]] && ! has_step rds2h5ad; then
+    OV_SHORT+=("sctour_input_h5ad=$ip")
   fi
 fi
 
-# output overrides
 if [[ ${#OUT_PATHS[@]} -gt 0 ]]; then
   od="${OUT_PATHS[-1]}"
   if [[ "$od" == *.rds ]]; then
@@ -193,82 +109,35 @@ if [[ ${#OUT_PATHS[@]} -gt 0 ]]; then
     od="$(dirname "$od_file")"
     OV_SHORT+=("out_obj_rds=$od_file")
   fi
-
   OV_SHORT+=("out_dir=$od" "output_dir=$od" "results_dir=$od")
-
-  # monocle3 outputs
   if [[ ! " ${OV_SHORT[*]} " =~ " out_obj_rds=" ]]; then
     OV_SHORT+=("out_obj_rds=$od/obj_with_pseudotime.rds")
   fi
-  OV_SHORT+=(
-    "out_deg_csv=$od/deg_graph_test.csv"
-    "out_pr_deg_ids=$od/pr_deg_ids.txt"
-    "out_gene_modules_csv=$od/gene_modules.csv"
-    "out_prefilter_modules_csv=$od/gene_modules_prefilter.csv"
-  )
-
-  # length outputs
-  OV_SHORT+=(
-    "plot_out_pdf=$od/length_vs_pseudotime.pdf"
-    "plot_out_png=$od/length_vs_pseudotime.png"
-    "plot_out_cor_txt=$od/length_vs_pseudotime_correlation.txt"
-  )
-
-  # GO outputs
+  OV_SHORT+=("out_deg_csv=$od/deg_graph_test.csv" "out_pr_deg_ids=$od/pr_deg_ids.txt" "out_gene_modules_csv=$od/gene_modules.csv" "out_prefilter_modules_csv=$od/gene_modules_prefilter.csv")
+  OV_SHORT+=("plot_out_pdf=$od/length_vs_pseudotime.pdf" "plot_out_png=$od/length_vs_pseudotime.png" "plot_out_cor_txt=$od/length_vs_pseudotime_correlation.txt")
   OV_SHORT+=("go_out_csv=$od/GO_BP_merged_modules_simplified.csv")
 
-  # SCENIC outputs: derive from scenic_prefix instead of hard-coded legacy names
-  scenic_prefix="$(derive_scenic_prefix)"
-  OV_SHORT+=(
-    "scenic_out_dir=$od/scenic"
-    "scenic_out_csv=$od/scenic/${scenic_prefix}.csv"
-    "scenic_loom=$od/scenic/${scenic_prefix}.loom"
-    "scenic_adj_tsv=$od/scenic/adj_${scenic_prefix}.tsv"
-    "scenic_reg_csv=$od/scenic/reg_${scenic_prefix}.csv"
-    "scenic_result_loom=$od/scenic/${scenic_prefix}_result.loom"
-    "scenic_downstream_out_dir=$od/scenic/downstream"
-    "scenic_rss_csv=$od/scenic/downstream/rss_matrix.csv"
-    "scenic_rss_plot_pdf=$od/scenic/downstream/rss_plot.pdf"
-    "scenic_rss_plot_png=$od/scenic/downstream/rss_plot.png"
-    "scenic_regulons_rds=$od/scenic/downstream/regulons_list.rds"
-    "scenic_auc_thresholds_rds=$od/scenic/downstream/regulon_auc_thresholds.rds"
-  )
-
-  # rds2h5ad + sctour outputs
-  OV_SHORT+=(
-    "rds2h5ad_output_h5ad=$od/sctour/seurat_to_h5ad.h5ad"
-    "sctour_out_dir=$od/sctour"
-    "sctour_output_h5ad=$od/sctour/oocyte_sctour_tnode.h5ad"
-    "sctour_ptime_csv=$od/sctour/ptime.csv"
-  )
-
-  # If user runs rds2h5ad + sctour together and did not explicitly set sctour_input_h5ad,
-  # let sctour consume the freshly created h5ad automatically.
-  if has_step rds2h5ad && has_step sctour; then
-    if ! get_explicit_override sctour_input_h5ad >/dev/null 2>&1; then
-      OV_SHORT+=("sctour_input_h5ad=$od/sctour/seurat_to_h5ad.h5ad")
+  scenic_prefix="$(explicit_override_value scenic_prefix || true)"
+  if [[ -z "$scenic_prefix" ]]; then
+    if [[ ${#IN_PATHS[@]} -gt 0 && "${IN_PATHS[-1]}" != *.h5ad ]]; then
+      scenic_prefix="$(basename "${IN_PATHS[-1]}")"
+      scenic_prefix="${scenic_prefix%.*}"
+    else
+      scenic_prefix="scenic"
     fi
-  fi
-fi
-
-# input overrides
-if [[ ${#IN_PATHS[@]} -gt 0 ]]; then
-  ip="${IN_PATHS[-1]}"
-  OV_SHORT+=("input_rds=$ip" "rds2h5ad_input_rds=$ip")
-
-  # When monocle3 is NOT requested, downstream RDS-based steps should respect -i directly.
-  if ! has_step monocle3; then
-    OV_SHORT+=(
-      "length_input_rds=$ip"
-      "scenic_input_rds=$ip"
-      "scenic_downstream_input_rds=$ip"
-    )
+    [[ "$scenic_prefix" != *_withoutMII ]] && scenic_prefix="${scenic_prefix}_withoutMII"
   fi
 
-  # If caller provides a prebuilt .h5ad and is not running rds2h5ad, feed it to sctour directly.
-  if [[ "$ip" == *.h5ad ]] && ! has_step rds2h5ad; then
-    OV_SHORT+=("sctour_input_h5ad=$ip")
-  fi
+  OV_SHORT+=("scenic_out_dir=$od/scenic" "scenic_prefix=$scenic_prefix")
+  OV_SHORT+=("scenic_out_csv=$od/scenic/${scenic_prefix}.csv")
+  OV_SHORT+=("scenic_loom=$od/scenic/${scenic_prefix}.loom")
+  OV_SHORT+=("scenic_adj_tsv=$od/scenic/adj_${scenic_prefix}.tsv")
+  OV_SHORT+=("scenic_reg_csv=$od/scenic/reg_${scenic_prefix}.csv")
+  OV_SHORT+=("scenic_result_loom=$od/scenic/${scenic_prefix}_result.loom")
+  OV_SHORT+=("scenic_downstream_out_dir=$od/scenic/downstream" "scenic_rss_csv=$od/scenic/downstream/rss_matrix.csv")
+  OV_SHORT+=("scenic_rss_plot_pdf=$od/scenic/downstream/rss_plot.pdf" "scenic_rss_plot_png=$od/scenic/downstream/rss_plot.png")
+  OV_SHORT+=("scenic_regulons_rds=$od/scenic/downstream/regulons_list.rds" "scenic_auc_thresholds_rds=$od/scenic/downstream/regulon_auc_thresholds.rds")
+  OV_SHORT+=("rds2h5ad_output_h5ad=$od/sctour/seurat_to_h5ad.h5ad" "sctour_out_dir=$od/sctour" "sctour_output_h5ad=$od/sctour/oocyte_sctour_tnode.h5ad" "sctour_ptime_csv=$od/sctour/ptime.csv")
 fi
 
 extract_module(){
@@ -287,7 +156,6 @@ mods = root.get('modules') or {}
 if mkey not in mods:
     raise SystemExit(f"ERROR: module '{mkey}' not found under modules in {combined}")
 mod = mods[mkey]
-
 def set_path(d, path, val):
     ks = [k for k in path.split('.') if k]
     cur = d
@@ -296,7 +164,6 @@ def set_path(d, path, val):
             cur[k] = {}
         cur = cur[k]
     cur[ks[-1]] = val
-
 for ov in ovs:
     if not ov:
         continue
@@ -307,7 +174,6 @@ for ov in ovs:
     if k.startswith(mkey + '.'):
         k = k[len(mkey) + 1:]
     set_path(mod, k, v)
-
 text = yaml.safe_dump(mod, sort_keys=False, allow_unicode=True)
 if not text.endswith('\n'):
     text += '\n'
@@ -319,54 +185,28 @@ PY
 COMBINED="$(discover_config)"
 TMP_CFG="$(mktemp -t fig3_cfg_XXXXXX.yaml)"
 trap 'rm -f "$TMP_CFG"' EXIT
-
 EXTRACT_ARGS=()
 ((${#OV_SHORT[@]})) && EXTRACT_ARGS+=("${OV_SHORT[@]}")
-((${#OV_EXPL[@]})) && EXTRACT_ARGS+=("${OV_EXPL[@]}")
+((${#OV_EXPL[@]}))  && EXTRACT_ARGS+=("${OV_EXPL[@]}")
 extract_module "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "${EXTRACT_ARGS[@]}"
 
 run_one(){
   case "$1" in
-    monocle3)
-      s="$(resolve_script monocle3 fig3_monocle3_modules.R fig3_monocle3_modules.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    length)
-      s="$(resolve_script length fig3_length_pseudotime.R fig3_length_pseudotime.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    go)
-      s="$(resolve_script go fig3_go_enrichment.R fig3_go_enrichment.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    scenic1)
-      s="$(resolve_script scenic1 fig3_scenic_rds_to_csv.R fig3_scenic_rds_to_csv.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    scenic2)
-      s="$(resolve_script scenic2 fig3_scenic_pyscenic.py)"
-      run_cmd "$PYTHON_BIN" "$s" --config "$TMP_CFG" ;;
-    scenic_downstream)
-      s="$(resolve_script scenic_downstream fig3_scenic_downstream.R fig3_scenic_downstream.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    rds2h5ad)
-      s="$(resolve_script rds2h5ad fig3_rds_to_h5ad.R fig3_rds_to_h5ad.txt)"
-      run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
-    sctour)
-      s="$(resolve_script sctour fig3_sctour_tnode.py)"
-      run_cmd "$PYTHON_BIN" "$s" --config "$TMP_CFG" ;;
+    monocle3) s="$(resolve_script monocle3 fig3_monocle3_modules.R fig3_monocle3_modules.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    length) s="$(resolve_script length fig3_length_pseudotime.R fig3_length_pseudotime.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    go) s="$(resolve_script go fig3_go_enrichment.R fig3_go_enrichment.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    scenic1) s="$(resolve_script scenic1 fig3_scenic_rds_to_csv.R fig3_scenic_rds_to_csv.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    scenic2) s="$(resolve_script scenic2 fig3_scenic_pyscenic.py)"; run_cmd "$PYTHON_BIN" "$s" --config "$TMP_CFG" ;;
+    scenic_downstream) s="$(resolve_script scenic_downstream fig3_scenic_downstream.R fig3_scenic_downstream.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    rds2h5ad) s="$(resolve_script rds2h5ad fig3_rds_to_h5ad.R fig3_rds_to_h5ad.txt)"; run_cmd "$R_BIN" "$s" --config "$TMP_CFG" ;;
+    sctour) s="$(resolve_script sctour fig3_sctour_tnode.py)"; run_cmd "$PYTHON_BIN" "$s" --config "$TMP_CFG" ;;
     *) echo "ERROR: unknown step '$1'" >&2; usage; exit 2 ;;
   esac
 }
 
 if [[ "$ONLY" == "all" || -z "$ONLY" ]]; then
-  run_one monocle3
-  run_one length
-  run_one go
-  run_one scenic1
-  run_one scenic2
-  run_one scenic_downstream
-  run_one rds2h5ad
-  run_one sctour
+  run_one monocle3; run_one length; run_one go; run_one scenic1; run_one scenic2; run_one scenic_downstream; run_one rds2h5ad; run_one sctour
 else
   IFS=',' read -r -a STEPS <<< "$ONLY"
   for st in "${STEPS[@]}"; do run_one "$st"; done
 fi
-
-echo "[OK] Fig3 done."

@@ -1,40 +1,6 @@
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # Fig3 | SCENIC downstream analysis (RSS heatmap across pseudotime bins)
-#
-# What this script does
-#   - Reads a pySCENIC result loom (Step 2 output) and extracts regulons + AUC.
-#   - Reads a Seurat object (with pseudotime bins in meta.data).
-#   - Computes regulon specificity scores (RSS) across a grouping variable
-#     (default: pseudotime_bin_q) and writes a heatmap + CSV.
-#
-# Recommended way to run (repo wrapper)
-#   bash Fig3/run_fig3_combined.sh --only scenic_downstream -i <obj_with_pseudotime.rds> -o <out_dir>
-#
-# Run this script directly (module-level YAML)
-#   Rscript Fig3/fig3_scenic_downstream.R --config <fig3_module.yaml>
-#
-# Key config fields (module-level YAML)
-#   scenic_result_loom, out_obj_rds/input_rds,
-#   scenic_stage_column, scenic_exclude_stage_value,
-#   scenic_rss_var, scenic_rss_keep_levels,
-#   scenic_rss_zThreshold, scenic_rss_thr,
-#   scenic_rss_cluster_columns, scenic_rss_order_rows,
-#   scenic_rss_col_low, scenic_rss_col_mid, scenic_rss_col_high, scenic_rss_revCol,
-#   scenic_out_dir, scenic_downstream_out_dir,
-#   scenic_rss_csv, scenic_rss_plot_pdf, scenic_rss_plot_png,
-#   scenic_regulons_rds, scenic_auc_thresholds_rds
-#
-# Outputs (under scenic_downstream_out_dir)
-#   - rss_matrix.csv
-#   - rss_plot.pdf / rss_plot.png
-#   - regulons_list.rds
-#   - regulon_auc_thresholds.rds
-#   - params_used_fig3_scenic_downstream.yaml
-#   - sessionInfo_fig3_scenic_downstream.txt
-#
-# Dependencies
-#   Seurat, dplyr, SCopeLoomR, AUCell, SCENIC, ggplot2, yaml
 # -----------------------------------------------------------------------------
 suppressPackageStartupMessages({
   library(yaml)
@@ -48,16 +14,13 @@ suppressPackageStartupMessages({
 
 parse_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
-  out <- list()
-  i <- 1
+  out <- list(); i <- 1
   while (i <= length(args)) {
     k <- args[[i]]
     if (!startsWith(k, "--")) stop("Unknown arg: ", k)
     key <- sub("^--", "", k)
     if (key %in% c("help")) {
-      out[[key]] <- TRUE
-      i <- i + 1
-      next
+      out[[key]] <- TRUE; i <- i + 1; next
     }
     if (i == length(args)) stop("Missing value for ", k)
     out[[key]] <- args[[i + 1]]
@@ -67,21 +30,34 @@ parse_args <- function() {
 }
 
 help_msg <- function() {
-  cat(
-"fig3_scenic_downstream.R
-
-Required:
-  --config <yaml>     YAML config path (reuse Fig3 config)
-
-Example:
-  Rscript fig3_scenic_downstream.R --config Fig3/configs/fig3_monocle3.yaml
-", sep = "")
+  cat("fig3_scenic_downstream.R\n\nRequired:\n  --config <yaml>\n", sep = "")
 }
 
 write_text <- function(path, txt) {
+  dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   con <- file(path, open = "wt", encoding = "UTF-8")
   on.exit(close(con), add = TRUE)
   writeLines(txt, con = con)
+}
+
+dir_for <- function(path) {
+  d <- dirname(path)
+  if (!dir.exists(d)) dir.create(d, recursive = TRUE, showWarnings = FALSE)
+}
+
+first_nonempty <- function(...) {
+  xs <- list(...)
+  for (x in xs) {
+    if (!is.null(x) && nzchar(as.character(x))) return(as.character(x))
+  }
+  NULL
+}
+
+canonicalize_ids <- function(x) {
+  x <- as.character(x)
+  x <- sub("^X", "", x)
+  x <- gsub("\\.", "-", x)
+  x
 }
 
 args <- parse_args()
@@ -91,52 +67,52 @@ if (is.null(args$config)) { help_msg(); stop("Missing --config", call. = FALSE) 
 cfg <- yaml::read_yaml(args$config)
 
 # ---- Inputs ----
-loom_path <- cfg$scenic_result_loom
-if (is.null(loom_path) || !nzchar(as.character(loom_path))) {
-  loom_path <- "results/Fig3/scenic/oocyte_1211_withoutMII_result.loom"
+loom_path <- first_nonempty(cfg$scenic_result_loom)
+if (is.null(loom_path)) {
+  scenic_out_dir <- first_nonempty(cfg$scenic_out_dir, file.path("results", "Fig3", "scenic"))
+  scenic_prefix <- first_nonempty(cfg$scenic_prefix, "scenic_withoutMII")
+  loom_path <- file.path(scenic_out_dir, paste0(scenic_prefix, "_result.loom"))
 }
 if (!file.exists(loom_path)) stop("Missing scenic_result_loom: ", loom_path, call. = FALSE)
 
-in_rds <- cfg$scenic_downstream_input_rds
-if (is.null(in_rds) || !nzchar(as.character(in_rds))) {
-  if (!is.null(cfg$input_rds) && nzchar(as.character(cfg$input_rds))) {
-    in_rds <- cfg$input_rds
-  } else if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds)) && file.exists(cfg$out_obj_rds)) {
-    in_rds <- cfg$out_obj_rds
-  } else {
-    in_rds <- "obj_oo.rds"
-  }
-}
-if (!file.exists(in_rds)) stop("Missing scenic_downstream_input_rds: ", in_rds, call. = FALSE)
+in_rds <- first_nonempty(
+  cfg$scenic_downstream_input_rds,
+  cfg$scenic_input_rds,
+  cfg$input_rds,
+  if (!is.null(cfg$out_obj_rds) && nzchar(as.character(cfg$out_obj_rds)) && file.exists(as.character(cfg$out_obj_rds))) cfg$out_obj_rds else NULL
+)
+if (is.null(in_rds)) stop("Missing scenic_downstream_input_rds/scenic_input_rds/input_rds", call. = FALSE)
+if (!file.exists(in_rds)) stop("Missing scenic_downstream input rds: ", in_rds, call. = FALSE)
 
-stage_col <- if (!is.null(cfg$scenic_stage_column)) as.character(cfg$scenic_stage_column) else "stage"
-exclude_stage <- if (!is.null(cfg$scenic_exclude_stage_value)) as.character(cfg$scenic_exclude_stage_value) else "MII"
-
-rss_var <- if (!is.null(cfg$scenic_rss_var)) as.character(cfg$scenic_rss_var) else "pseudotime_bin_q"
-rss_keep_levels <- cfg$scenic_rss_keep_levels  # optional list like ["1","2",...]
+stage_col <- first_nonempty(cfg$scenic_stage_column, "stage")
+exclude_stage <- first_nonempty(cfg$scenic_exclude_stage_value, "MII")
+rss_var <- first_nonempty(cfg$scenic_rss_var, "pseudotime_bin_q")
+rss_keep_levels <- cfg$scenic_rss_keep_levels
 rss_zThreshold <- if (!is.null(cfg$scenic_rss_zThreshold)) as.numeric(cfg$scenic_rss_zThreshold) else 1
 rss_thr <- if (!is.null(cfg$scenic_rss_thr)) as.numeric(cfg$scenic_rss_thr) else 0.1
 rss_cluster_columns <- if (!is.null(cfg$scenic_rss_cluster_columns)) as.logical(cfg$scenic_rss_cluster_columns) else FALSE
 rss_order_rows <- if (!is.null(cfg$scenic_rss_order_rows)) as.logical(cfg$scenic_rss_order_rows) else TRUE
-col_low <- if (!is.null(cfg$scenic_rss_col_low)) as.character(cfg$scenic_rss_col_low) else "#005887"
-col_mid <- if (!is.null(cfg$scenic_rss_col_mid)) as.character(cfg$scenic_rss_col_mid) else "#926987"
-col_high <- if (!is.null(cfg$scenic_rss_col_high)) as.character(cfg$scenic_rss_col_high) else "#ED7B86"
+col_low <- first_nonempty(cfg$scenic_rss_col_low, "#005887")
+col_mid <- first_nonempty(cfg$scenic_rss_col_mid, "#926987")
+col_high <- first_nonempty(cfg$scenic_rss_col_high, "#ED7B86")
 revCol <- if (!is.null(cfg$scenic_rss_revCol)) as.logical(cfg$scenic_rss_revCol) else FALSE
 verbose <- if (!is.null(cfg$scenic_rss_verbose)) as.logical(cfg$scenic_rss_verbose) else TRUE
 
 # ---- Outputs ----
-base_out_dir <- if (!is.null(cfg$scenic_out_dir)) cfg$scenic_out_dir else "results/Fig3/scenic"
-out_dir <- if (!is.null(cfg$scenic_downstream_out_dir)) cfg$scenic_downstream_out_dir else file.path(base_out_dir, "downstream")
-if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+base_out_dir <- first_nonempty(cfg$scenic_out_dir, file.path("results", "Fig3", "scenic"))
+out_dir <- first_nonempty(cfg$scenic_downstream_out_dir, file.path(base_out_dir, "downstream"))
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-out_rss_csv <- if (!is.null(cfg$scenic_rss_csv)) cfg$scenic_rss_csv else file.path(out_dir, "rss_matrix.csv")
-out_pdf <- if (!is.null(cfg$scenic_rss_plot_pdf)) cfg$scenic_rss_plot_pdf else file.path(out_dir, "rss_plot.pdf")
-out_png <- if (!is.null(cfg$scenic_rss_plot_png)) cfg$scenic_rss_plot_png else file.path(out_dir, "rss_plot.png")
-out_regulons_rds <- if (!is.null(cfg$scenic_regulons_rds)) cfg$scenic_regulons_rds else file.path(out_dir, "regulons_list.rds")
-out_thr_rds <- if (!is.null(cfg$scenic_auc_thresholds_rds)) cfg$scenic_auc_thresholds_rds else file.path(out_dir, "regulon_auc_thresholds.rds")
+out_rss_csv <- first_nonempty(cfg$scenic_rss_csv, file.path(out_dir, "rss_matrix.csv"))
+out_pdf <- first_nonempty(cfg$scenic_rss_plot_pdf, file.path(out_dir, "rss_plot.pdf"))
+out_png <- first_nonempty(cfg$scenic_rss_plot_png, file.path(out_dir, "rss_plot.png"))
+out_regulons_rds <- first_nonempty(cfg$scenic_regulons_rds, file.path(out_dir, "regulons_list.rds"))
+out_thr_rds <- first_nonempty(cfg$scenic_auc_thresholds_rds, file.path(out_dir, "regulon_auc_thresholds.rds"))
+for (p in c(out_rss_csv, out_pdf, out_png, out_regulons_rds, out_thr_rds)) dir_for(p)
 
 message("[fig3-scenic-down] Open loom: ", loom_path)
 loom <- open_loom(loom_path)
+on.exit(try(close_loom(loom), silent = TRUE), add = TRUE)
 
 regulons_incidMat <- get_regulons(loom, column.attr.name = "Regulons")
 regulons <- regulonsToGeneLists(regulons_incidMat)
@@ -146,32 +122,60 @@ regulonAUC <- get_regulons_AUC(loom, column.attr.name = "RegulonsAUC")
 regulonAucThresholds <- get_regulon_thresholds(loom)
 saveRDS(regulonAucThresholds, out_thr_rds)
 
-# Load Seurat object and filter stage
 message("[fig3-scenic-down] Load Seurat: ", in_rds)
 obj <- readRDS(in_rds)
-if (!inherits(obj, "Seurat")) stop("Expected Seurat object in scenic_downstream_input_rds", call. = FALSE)
-if (!stage_col %in% colnames(obj@meta.data)) stop("meta.data missing stage column: ", stage_col, call. = FALSE)
+if (!inherits(obj, "Seurat")) stop("Expected Seurat object in scenic_downstream input RDS", call. = FALSE)
 
-keep_cells <- rownames(obj@meta.data)[as.character(obj@meta.data[[stage_col]]) != exclude_stage]
-obj <- subset(obj, cells = keep_cells)
-
-# Match cells between Seurat and AUC
-common_cells <- intersect(colnames(obj), colnames(regulonAUC))
-if (length(common_cells) == 0) stop("No overlapping cells between Seurat and loom regulonAUC.", call. = FALSE)
-
-obj <- subset(obj, cells = common_cells)
-
-sub_regulonAUC <- regulonAUC[, match(colnames(obj), colnames(regulonAUC))]
-sub_regulonAUC <- sub_regulonAUC[onlyNonDuplicatedExtended(rownames(sub_regulonAUC)), ]
+if (stage_col %in% colnames(obj@meta.data) && nzchar(exclude_stage)) {
+  message("[fig3-scenic-down] Filter stage: ", stage_col, " != ", exclude_stage)
+  keep_cells <- rownames(obj@meta.data)[as.character(obj@meta.data[[stage_col]]) != exclude_stage]
+  obj <- subset(obj, cells = keep_cells)
+} else {
+  message("[fig3-scenic-down] stage filter skipped (column missing or empty exclude value)")
+}
 
 if (!rss_var %in% colnames(obj@meta.data)) {
   stop("meta.data missing RSS annotation column: ", rss_var, call. = FALSE)
 }
 
+# Exact overlap first, then a light canonicalization fallback.
+common_cells <- intersect(colnames(obj), colnames(regulonAUC))
+used_canonical <- FALSE
+cell_map <- NULL
+if (length(common_cells) == 0) {
+  obj_can <- canonicalize_ids(colnames(obj))
+  auc_can <- canonicalize_ids(colnames(regulonAUC))
+  common_can <- intersect(obj_can, auc_can)
+  if (length(common_can) > 0) {
+    used_canonical <- TRUE
+    obj_idx <- match(common_can, obj_can)
+    auc_idx <- match(common_can, auc_can)
+    cell_map <- data.frame(
+      seurat_cell = colnames(obj)[obj_idx],
+      loom_cell = colnames(regulonAUC)[auc_idx],
+      canonical_cell = common_can,
+      stringsAsFactors = FALSE
+    )
+    common_cells <- cell_map$seurat_cell
+  }
+}
+if (length(common_cells) == 0) {
+  stop("No overlapping cells between Seurat and loom regulonAUC.", call. = FALSE)
+}
+
+if (used_canonical) {
+  message("[fig3-scenic-down] exact overlap=0; canonicalized overlap=", length(common_cells))
+  obj <- subset(obj, cells = cell_map$seurat_cell)
+  sub_regulonAUC <- regulonAUC[, cell_map$loom_cell, drop = FALSE]
+  colnames(sub_regulonAUC) <- cell_map$seurat_cell
+} else {
+  obj <- subset(obj, cells = common_cells)
+  sub_regulonAUC <- regulonAUC[, colnames(obj), drop = FALSE]
+}
+sub_regulonAUC <- sub_regulonAUC[onlyNonDuplicatedExtended(rownames(sub_regulonAUC)), ]
+
 cell_ann <- data.frame(row.names = colnames(obj), tmp = obj@meta.data[[rss_var]], stringsAsFactors = FALSE)
 colnames(cell_ann) <- rss_var
-
-# Ensure the annotation is a factor with ordered levels if it looks numeric
 if (!is.factor(cell_ann[[rss_var]])) {
   vals <- as.character(cell_ann[[rss_var]])
   suppressWarnings(num <- as.numeric(vals))
@@ -183,12 +187,10 @@ if (!is.factor(cell_ann[[rss_var]])) {
   }
 }
 
-message("[fig3-scenic-down] calcRSS by: ", rss_var)
-rss <- calcRSS(AUC = getAUC(sub_regulonAUC),
-               cellAnnotation = cell_ann[colnames(sub_regulonAUC), rss_var, drop = FALSE])
+message("[fig3-scenic-down] calcRSS by: ", rss_var, " (cells=", ncol(sub_regulonAUC), ")")
+rss <- calcRSS(AUC = getAUC(sub_regulonAUC), cellAnnotation = cell_ann[colnames(sub_regulonAUC), rss_var, drop = FALSE])
 rss <- na.omit(rss)
 
-# Keep selected bins/levels (default: first 10 numeric levels)
 if (!is.null(rss_keep_levels)) {
   keep <- as.character(unlist(rss_keep_levels))
 } else {
@@ -204,36 +206,30 @@ keep <- intersect(keep, colnames(rss))
 if (length(keep) == 0) stop("No valid columns to keep in RSS. Check scenic_rss_keep_levels.", call. = FALSE)
 rss <- rss[, keep, drop = FALSE]
 
-# Save RSS matrix
 rss_df <- as.data.frame(rss)
 rss_df$regulon <- rownames(rss_df)
 rss_df <- rss_df[, c("regulon", keep), drop = FALSE]
 write.csv(rss_df, out_rss_csv, row.names = FALSE)
 
-# Plot
 message("[fig3-scenic-down] plotRSS -> ", out_pdf)
-rssPlot <- plotRSS(rss,
-                   labelsToDiscard = NULL,
-                   zThreshold = rss_zThreshold,
-                   cluster_columns = rss_cluster_columns,
-                   order_rows = rss_order_rows,
-                   thr = rss_thr,
-                   varName = rss_var,
-                   col.low = col_low,
-                   col.mid = col_mid,
-                   col.high = col_high,
-                   revCol = revCol,
-                   verbose = verbose)
+rssPlot <- plotRSS(
+  rss,
+  labelsToDiscard = NULL,
+  zThreshold = rss_zThreshold,
+  cluster_columns = rss_cluster_columns,
+  order_rows = rss_order_rows,
+  thr = rss_thr,
+  varName = rss_var,
+  col.low = col_low,
+  col.mid = col_mid,
+  col.high = col_high,
+  revCol = revCol,
+  verbose = verbose
+)
 
 ggsave(out_pdf, plot = rssPlot, width = 10, height = 8, units = "in")
 ggsave(out_png, plot = rssPlot, width = 10, height = 8, units = "in", dpi = 300)
 
-# Close loom
-try({
-  close_loom(loom)
-}, silent = TRUE)
-
-# Record params + session
 params_used <- list(
   scenic_result_loom = loom_path,
   scenic_downstream_input_rds = in_rds,
@@ -250,6 +246,8 @@ params_used <- list(
   scenic_rss_col_high = col_high,
   scenic_rss_revCol = revCol,
   scenic_rss_verbose = verbose,
+  used_canonical_cellname_fallback = used_canonical,
+  n_cells_overlap = length(common_cells),
   outputs = list(
     rss_csv = out_rss_csv,
     rss_plot_pdf = out_pdf,
@@ -258,8 +256,6 @@ params_used <- list(
     thresholds_rds = out_thr_rds
   )
 )
-
 yaml::write_yaml(params_used, file.path(out_dir, "params_used_fig3_scenic_downstream.yaml"))
 write_text(file.path(out_dir, "sessionInfo_fig3_scenic_downstream.txt"), capture.output(sessionInfo()))
-
 message("[fig3-scenic-down] Done.")

@@ -119,7 +119,22 @@ transpose <- if (!is.null(cfg$scenic_transpose)) as.logical(cfg$scenic_transpose
 scenic_out_dir <- if (!is.null(cfg$scenic_out_dir)) as.character(cfg$scenic_out_dir) else "results/Fig3/scenic"
 if (!dir.exists(scenic_out_dir)) dir.create(scenic_out_dir, recursive = TRUE, showWarnings = FALSE)
 
-out_csv <- if (!is.null(cfg$scenic_out_csv)) as.character(cfg$scenic_out_csv) else file.path(scenic_out_dir, "oocyte_1211_withoutMII.csv")
+scenic_prefix <- if (!is.null(cfg$scenic_prefix) && nzchar(as.character(cfg$scenic_prefix))) {
+  as.character(cfg$scenic_prefix)
+} else {
+  base <- tools::file_path_sans_ext(basename(in_rds))
+  if (nzchar(exclude_stage) && !grepl(paste0("_without", exclude_stage, "$"), base)) {
+    paste0(base, "_without", exclude_stage)
+  } else {
+    base
+  }
+}
+
+out_csv <- if (!is.null(cfg$scenic_out_csv) && nzchar(as.character(cfg$scenic_out_csv))) {
+  as.character(cfg$scenic_out_csv)
+} else {
+  file.path(scenic_out_dir, paste0(scenic_prefix, ".csv"))
+}
 out_csv_dir <- dirname(out_csv)
 if (!dir.exists(out_csv_dir)) dir.create(out_csv_dir, recursive = TRUE, showWarnings = FALSE)
 

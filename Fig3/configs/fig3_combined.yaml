@@ -4,8 +4,6 @@ modules:
     input_rds: obj_oo.rds
     out_dir: results/Fig3
     out_obj_rds: results/Fig3/obj_with_pseudotime.rds
-    scenic_input_rds: ""
-    scenic_downstream_input_rds: ""
     num_dim: 50
     root_cluster: '6'
     cores: 8
@@ -48,20 +46,19 @@ modules:
       M5:
       - '2'
     scenic_out_dir: results/Fig3/scenic
-    scenic_out_csv: results/Fig3/scenic/oocyte_1211_withoutMII.csv
+    scenic_out_csv: ''
     scenic_stage_column: stage
     scenic_exclude_stage_value: MII
     scenic_assay: RNA
     scenic_slot: counts
     scenic_transpose: true
-    scenic_loom: results/Fig3/scenic/oocyte_1211_withoutMII.loom
-    scenic_adj_tsv: results/Fig3/scenic/adj_oocyte_1211_withoutMII.tsv
-    scenic_reg_csv: results/Fig3/scenic/reg_oocyte_1211_withoutMII.csv
-    scenic_result_loom: results/Fig3/scenic/oocyte_1211_withoutMII_result.loom
+    scenic_loom: ''
+    scenic_adj_tsv: ''
+    scenic_reg_csv: ''
+    scenic_result_loom: ''
     scenic_tf_list: allTFs_mm.txt
     scenic_rankings_feather: mm10_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather
     scenic_motif_annotations: motifs-v10nr_clust-nr.mgi-m0.001-o0.0.tbl
-    scenic_motif_annotation: ""
     scenic_pyscenic_bin: pyscenic
     scenic_grn_workers: 14
     scenic_grn_method: grnboost2
@@ -98,6 +95,10 @@ modules:
     sctour_hvg_n_top_genes: 1000
     sctour_alpha_z: 0.5
     sctour_alpha_predz: 0.5
+    scenic_prefix: ''
+    scenic_input_rds: ''
+    scenic_downstream_input_rds: ''
+    scenic_motif_annotation: ''
   fig3_monocle3:
     input_rds: obj_oo.rds
     out_dir: results/Fig3

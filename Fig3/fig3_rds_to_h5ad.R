@@ -77,8 +77,31 @@ need_yaml()
 cfg <- yaml::read_yaml(args$config)
 
 # Inputs/outputs
-in_rds <- if (!is.null(cfg$rds2h5ad_input_rds)) cfg$rds2h5ad_input_rds else "oocyte_some_c1_filter_1211.rds"
-out_h5ad <- if (!is.null(cfg$rds2h5ad_output_h5ad)) cfg$rds2h5ad_output_h5ad else "oocyte_some_c1_filter_1211.h5ad"
+in_rds <- NULL
+if (!is.null(cfg$rds2h5ad_input_rds) && nzchar(cfg$rds2h5ad_input_rds)) {
+  in_rds <- cfg$rds2h5ad_input_rds
+} else if (!is.null(cfg$out_obj_rds) && nzchar(cfg$out_obj_rds) && file.exists(cfg$out_obj_rds)) {
+  in_rds <- cfg$out_obj_rds
+} else if (!is.null(cfg$input_rds) && nzchar(cfg$input_rds)) {
+  in_rds <- cfg$input_rds
+} else {
+  stop("Missing input rds: please provide rds2h5ad_input_rds or input_rds")
+}
+
+if (!file.exists(in_rds)) {
+  stop("Missing input rds: ", in_rds)
+}
+
+out_h5ad <- NULL
+if (!is.null(cfg$rds2h5ad_output_h5ad) && nzchar(cfg$rds2h5ad_output_h5ad)) {
+  out_h5ad <- cfg$rds2h5ad_output_h5ad
+} else if (!is.null(cfg$out_dir) && nzchar(cfg$out_dir)) {
+  out_h5ad <- file.path(cfg$out_dir, "sctour", "seurat_to_h5ad.h5ad")
+} else {
+  out_h5ad <- "seurat_to_h5ad.h5ad"
+}
+
+dir.create(dirname(out_h5ad), recursive = TRUE, showWarnings = FALSE)
 main_layer <- if (!is.null(cfg$rds2h5ad_main_layer)) cfg$rds2h5ad_main_layer else "data"
 
 if (!file.exists(in_rds)) stop("Missing input rds: ", in_rds, call. = FALSE)

@@ -174,21 +174,32 @@ if (used_canonical) {
 }
 sub_regulonAUC <- sub_regulonAUC[onlyNonDuplicatedExtended(rownames(sub_regulonAUC)), ]
 
-cell_ann <- data.frame(row.names = colnames(obj), tmp = obj@meta.data[[rss_var]], stringsAsFactors = FALSE)
-colnames(cell_ann) <- rss_var
-if (!is.factor(cell_ann[[rss_var]])) {
-  vals <- as.character(cell_ann[[rss_var]])
-  suppressWarnings(num <- as.numeric(vals))
-  if (all(!is.na(num))) {
-    levs <- as.character(sort(unique(num)))
-    cell_ann[[rss_var]] <- factor(vals, levels = levs, ordered = TRUE)
-  } else {
-    cell_ann[[rss_var]] <- factor(vals)
-  }
+# calcRSS expects a plain atomic vector (preferably named), not a data.frame/tibble column.
+cell_ann <- setNames(as.character(obj@meta.data[[rss_var]]), colnames(obj))
+cell_ann <- cell_ann[colnames(sub_regulonAUC)]
+keep_ann <- !is.na(cell_ann) & nzchar(cell_ann)
+if (!all(keep_ann)) {
+  sub_regulonAUC <- sub_regulonAUC[, keep_ann, drop = FALSE]
+  cell_ann <- cell_ann[keep_ann]
+}
+if (length(cell_ann) == 0) {
+  stop("No valid cells remain after removing NA/empty RSS annotations in column: ", rss_var, call. = FALSE)
+}
+
+# Keep numeric-like bins in ascending order; otherwise keep factor order if available.
+ann_levels <- NULL
+suppressWarnings(num <- as.numeric(cell_ann))
+if (all(!is.na(num))) {
+  ann_levels <- as.character(sort(unique(num)))
+} else if (is.factor(obj@meta.data[[rss_var]])) {
+  ann_levels <- levels(obj@meta.data[[rss_var]])
+}
+if (!is.null(ann_levels)) {
+  cell_ann <- factor(cell_ann, levels = ann_levels, ordered = TRUE)
 }
 
 message("[fig3-scenic-down] calcRSS by: ", rss_var, " (cells=", ncol(sub_regulonAUC), ")")
-rss <- calcRSS(AUC = getAUC(sub_regulonAUC), cellAnnotation = cell_ann[colnames(sub_regulonAUC), rss_var, drop = FALSE])
+rss <- calcRSS(AUC = getAUC(sub_regulonAUC), cellAnnotation = cell_ann)
 rss <- na.omit(rss)
 
 if (!is.null(rss_keep_levels)) {
@@ -248,6 +259,7 @@ params_used <- list(
   scenic_rss_verbose = verbose,
   used_canonical_cellname_fallback = used_canonical,
   n_cells_overlap = length(common_cells),
+  n_cells_used_for_rss = length(cell_ann),
   outputs = list(
     rss_csv = out_rss_csv,
     rss_plot_pdf = out_pdf,
@@ -258,4 +270,3 @@ params_used <- list(
 )
 yaml::write_yaml(params_used, file.path(out_dir, "params_used_fig3_scenic_downstream.yaml"))
 write_text(file.path(out_dir, "sessionInfo_fig3_scenic_downstream.txt"), capture.output(sessionInfo()))
-message("[fig3-scenic-down] Done.")

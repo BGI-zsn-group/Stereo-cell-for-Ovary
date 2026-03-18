@@ -100,7 +100,7 @@ def main() -> None:
 
     # 1) CSV -> loom
     print(f"[fig3-scenic2] Reading CSV: {csv_path}")
-    x = sc.read_csv(str(csv_path))  # expects cells x genes with first col as index
+    x = sc.read_csv(str(csv_path), first_column_names=True)  # expects cells x genes with first col as index
     # Ensure dense array for loompy
     X = x.X
     try:

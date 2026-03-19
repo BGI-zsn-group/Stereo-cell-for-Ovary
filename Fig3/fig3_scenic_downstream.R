@@ -10,6 +10,8 @@ suppressPackageStartupMessages({
   library(AUCell)
   library(SCENIC)
   library(ggplot2)
+  library(grid)
+  library(ComplexHeatmap)
 })
 
 parse_args <- function() {
@@ -222,6 +224,41 @@ rss_df$regulon <- rownames(rss_df)
 rss_df <- rss_df[, c("regulon", keep), drop = FALSE]
 write.csv(rss_df, out_rss_csv, row.names = FALSE)
 
+save_plot_object <- function(obj, path, width = 10, height = 8, dpi = 300) {
+  ext <- tolower(tools::file_ext(path))
+  if (ext == "pdf") {
+    grDevices::pdf(path, width = width, height = height)
+    on.exit(grDevices::dev.off(), add = FALSE)
+  } else if (ext == "png") {
+    grDevices::png(path, width = width, height = height, units = "in", res = dpi)
+    on.exit(grDevices::dev.off(), add = FALSE)
+  } else {
+    stop("Unsupported plot extension: ", ext)
+  }
+
+  draw_one <- function(x) {
+    if (inherits(x, "ggplot")) {
+      print(x)
+    } else if (inherits(x, c("Heatmap", "HeatmapList"))) {
+      ComplexHeatmap::draw(x)
+    } else if (inherits(x, c("grob", "gTree", "gList"))) {
+      grid::grid.newpage(); grid::grid.draw(x)
+    } else {
+      print(x)
+    }
+  }
+
+  if (is.list(obj) && !inherits(obj, c("ggplot", "Heatmap", "HeatmapList", "grob", "gTree", "gList"))) {
+    if (length(obj) == 0) stop("plotRSS returned an empty list")
+    for (i in seq_along(obj)) {
+      if (i > 1) grid::grid.newpage()
+      draw_one(obj[[i]])
+    }
+  } else {
+    draw_one(obj)
+  }
+}
+
 message("[fig3-scenic-down] plotRSS -> ", out_pdf)
 rssPlot <- plotRSS(
   rss,
@@ -238,8 +275,8 @@ rssPlot <- plotRSS(
   verbose = verbose
 )
 
-ggsave(out_pdf, plot = rssPlot, width = 10, height = 8, units = "in")
-ggsave(out_png, plot = rssPlot, width = 10, height = 8, units = "in", dpi = 300)
+save_plot_object(rssPlot, out_pdf, width = 10, height = 8)
+save_plot_object(rssPlot, out_png, width = 10, height = 8, dpi = 300)
 
 params_used <- list(
   scenic_result_loom = loom_path,

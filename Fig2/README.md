@@ -1,42 +1,69 @@
-# Fig2 — SCTransform + Harmony 多样本整合（两轮流程）
+# Fig. 2 | Two-pass SCTransform + Harmony integration
 
-本目录用于复现论文 **Fig.2** 的整合分析：将多个样本的 Seurat 对象（`.rds`）进行 **SCTransform + Harmony** 整合，并输出一个最终的整合 Seurat 对象（含 Harmony reduction、UMAP、聚类结果等）。
+## Overview
 
-## 目录结构
+This directory contains the code used to reproduce the integration analysis shown in **Fig. 2**. The workflow integrates multiple per-sample Seurat objects using a **two-pass SCTransform + Harmony** strategy and writes a single integrated Seurat object for downstream analyses and figure generation.
 
-```
-Fig2/
-  configs/
-    fig2_combined.yaml
-  fig2_harmony_integration.R
-  run_fig2_combined.sh
-```
+The implementation consists of:
 
-- `run_fig2_combined.sh`：**推荐入口**。从 combined YAML 中提取 `modules.fig2_harmony` 这一段配置（module），然后调用 R 脚本运行。
-- `fig2_harmony_integration.R`：核心 R pipeline（推荐使用 `.R` 文件名；runner 也兼容旧的 `.txt` 名称，但建议统一改为 `.R`）。
-- `configs/fig2_combined.yaml`：combined 配置文件（包含 `figure:` 与 `modules:`；本目录使用的模块为 `fig2_harmony`）。
+- `run_fig2_combined.sh`: recommended entry point; extracts the Fig. 2 module from the combined YAML configuration and runs the integration pipeline.
+- `fig2_harmony_integration.R`: core R implementation of the integration workflow.
+- `configs/fig2_combined.yaml`: combined configuration file; the active module is `modules.fig2_harmony`.
 
-## 输入（Inputs）
+## Input requirements
 
-- 一个目录，里面包含 **每个样本一个** 的 Seurat 对象 `.rds` 文件。
-- 每个 `.rds` 应为标准 Seurat object，至少包含 `RNA` assay。
-- 脚本会用文件名（去掉扩展名）作为样本名，并写入元数据列 `sample`。
+The pipeline expects a directory containing **one Seurat object (`.rds`) per sample**.
 
-## 输出（Outputs）
+Each input object should:
 
-- `out`：整合后的 Seurat object（RDS）。
-- 额外写出两个可复现文件（与 `out` 同目录）：
-  - `params_used_fig2_harmony.yaml`：本次运行实际使用的参数
-  - `sessionInfo_fig2.txt`：R 运行环境与包版本（`sessionInfo()`）
+- be a valid Seurat object;
+- contain an `RNA` assay;
+- use a compatible gene naming scheme across samples.
 
-输出 Seurat object 通常包含：
-- Harmony reduction（名字为 `harmony`）
-- UMAP（名字为 `umap`）
-- 聚类标签 `seurat_clusters`
+Sample identifiers are inferred from file names (extension removed) and added to the metadata as `sample`.
 
-## 快速开始（推荐）
+## Workflow summary
 
-在仓库根目录运行：
+### Pass 1
+
+1. Read all per-sample Seurat objects.
+2. Add sample identifiers to metadata.
+3. Run `SCTransform()` independently for each sample.
+4. Select integration features with `SelectIntegrationFeatures()`.
+5. Exclude ribosomal/mitochondrial and optionally user-specified genes.
+6. Merge all samples.
+7. Run `SCTransform()` on the merged object using `residual.features`.
+8. Run PCA, Harmony, neighbor graph construction, clustering, and UMAP.
+9. Remove pre-specified clusters interpreted as contamination or undesired populations.
+
+### Pass 2
+
+1. Split the filtered merged object by sample.
+2. Re-run per-sample `SCTransform()`.
+3. Recompute integration features.
+4. Run a second merged `SCTransform()` using filtered residual features.
+5. Run PCA, Harmony, neighbor graph construction, clustering, and UMAP again.
+6. Save the final integrated Seurat object.
+
+## Outputs
+
+The main output is a single integrated Seurat object:
+
+- `out` — integrated Seurat object (`.rds`), typically containing:
+  - Harmony reduction (`harmony`)
+  - UMAP embedding (`umap`)
+  - cluster labels (`seurat_clusters`)
+
+For reproducibility, the pipeline also writes:
+
+- `params_used_fig2_harmony.yaml` — resolved parameters used for the run
+- `sessionInfo_fig2.txt` — R session and package information
+
+These files are written to the same output directory as the integrated object.
+
+## Recommended usage
+
+Run from the repository root:
 
 ```bash
 bash Fig2/run_fig2_combined.sh \
@@ -44,13 +71,12 @@ bash Fig2/run_fig2_combined.sh \
   -o /path/to/output_dir
 ```
 
-说明：
-- `-i/--in` 会写入配置项 `rds_dir`。
-- `-o/--out` 是便捷参数：
-  - 如果以 `.rds` 结尾：视为**输出文件路径**，直接写入 `out=/.../...rds`
-  - 否则：视为**输出目录**，默认写入 `out=<out_dir>/obj_oo.rds`
+The convenience behavior of `-o/--out` is:
 
-你也可以用 `--set key=value` 覆盖任意配置项（可重复）：
+- if the value ends with `.rds`, it is treated as the full output file path;
+- otherwise, it is treated as an output directory and the pipeline writes `obj_oo.rds` inside that directory.
+
+Example with explicit parameter overrides:
 
 ```bash
 bash Fig2/run_fig2_combined.sh \
@@ -61,34 +87,34 @@ bash Fig2/run_fig2_combined.sh \
   --set theta_pass2=1
 ```
 
-## 配置说明（`configs/fig2_combined.yaml`）
+## Key configuration fields
 
-本目录使用 `modules.fig2_harmony` 下的参数。常用键如下：
+The following parameters are read from `modules.fig2_harmony` in `configs/fig2_combined.yaml`.
 
-| 键 | 含义 |
+| Parameter | Description |
 |---|---|
-| `rds_dir` | 输入目录：每个样本一个 `.rds` Seurat object |
-| `out` | 输出整合对象（RDS）路径 |
-| `pattern` | 用于筛选输入文件的正则（默认 `\\.rds$`） |
-| `seed` | 随机种子 |
-| `sct_vfeatures_n` | per-sample `SCTransform(variable.features.n=...)` |
-| `nfeatures_integrate` | `SelectIntegrationFeatures()` 选取 feature 数 |
-| `exclude_regex` | 从 features 中排除的基因正则（默认 `^(Rp|mt)`） |
-| `exclude_genes` | 额外手动排除的基因列表 |
-| `dims_pass1` | Pass1 PCA/Harmony 使用的维度（如 `1:20`） |
-| `res_pass1` | Pass1 聚类分辨率 |
-| `remove_clusters` | Pass1 后要删除的 cluster id（用于去污染/异常簇） |
-| `harmony_vars_pass1` | Pass1 Harmony 的 batch 变量（默认 `sample`） |
-| `dims_pass2` | Pass2 PCA/Harmony 使用的维度（如 `1:30`） |
-| `res_pass2` | Pass2 聚类分辨率 |
-| `theta_pass2` | Pass2 Harmony 的 `theta` |
-| `harmony_vars_pass2` | Pass2 Harmony 的 batch 变量（默认 `sample`） |
+| `rds_dir` | Directory containing one Seurat `.rds` object per sample |
+| `out` | Output path for the integrated Seurat object |
+| `pattern` | Regular expression used to select input files |
+| `seed` | Random seed |
+| `sct_vfeatures_n` | Number of variable features used in per-sample `SCTransform()` |
+| `nfeatures_integrate` | Number of integration features selected by `SelectIntegrationFeatures()` |
+| `exclude_regex` | Regex pattern for genes to exclude from integration features |
+| `exclude_genes` | Additional user-defined genes to exclude |
+| `dims_pass1` | PCA/Harmony dimensions used in pass 1 |
+| `res_pass1` | Clustering resolution in pass 1 |
+| `remove_clusters` | Cluster IDs removed after pass 1 |
+| `harmony_vars_pass1` | Batch variable(s) used by Harmony in pass 1 |
+| `dims_pass2` | PCA/Harmony dimensions used in pass 2 |
+| `res_pass2` | Clustering resolution in pass 2 |
+| `theta_pass2` | Harmony `theta` used in pass 2 |
+| `harmony_vars_pass2` | Batch variable(s) used by Harmony in pass 2 |
 
-## 直接运行 R 脚本（高级用法）
+## Running the R script directly
 
-`fig2_harmony_integration.R` 需要的是 **module-level YAML**（顶层包含 `rds_dir/out/...`），而不是 combined YAML（`figure/modules/...`）。
+The R script expects a **module-level YAML** file containing keys such as `rds_dir`, `out`, and other Fig. 2 parameters at the top level.
 
-如果你不想用 bash wrapper，可以先把 module 配置抽出来：
+If your repository uses the combined YAML structure, extract the module first and then run:
 
 ```bash
 python - <<'PY'
@@ -103,23 +129,48 @@ PY
 Rscript Fig2/fig2_harmony_integration.R --config Fig2/configs/fig2_harmony.yaml
 ```
 
-## 环境依赖（Software requirements）
+## Software requirements
+
+### Core requirements
 
 - Bash
-- Python 3（wrapper 读取 YAML 用）
-  - `pyyaml`：`pip install pyyaml`
-- R（建议 R >= 4.2）
-  - R 包：`Seurat`, `harmony`, `dplyr`, `patchwork`, `ggplot2`, `ggrepel`, `yaml`
+- Python 3
+- R (recommended: R >= 4.2)
 
-## 常见问题（Troubleshooting）
+### Python packages
 
-- **`No RDS files found`**：检查 `rds_dir` 与 `pattern`。
-- **`missing pyyaml`**：在运行 wrapper 的 Python 环境里安装 `pyyaml`。
-- **R 提示缺少 `yaml`**：`install.packages('yaml')`。
-- **Pass1 删除 cluster 时报 `None of the requested variables were found`**：请使用最新版 `fig2_harmony_integration.R`。当前版本已改为基于 `Idents()` 安全删除 cluster，不再依赖不稳定的 `subset = !(seurat_clusters %in% remove_clusters)` 表达式。
-- Seurat/Harmony 在 merge 或 SCTransform 报错：通常是输入对象不规范或 assay/基因命名不一致；请确保每个输入 RDS 都是可用的 Seurat object，并且基因标识一致（同一参考基因集合）。
+- `pyyaml`
 
-## 可复现性说明
+Install with:
 
-- 脚本会在输出目录写出 `params_used_fig2_harmony.yaml` 与 `sessionInfo_fig2.txt`。
-- 设置 `seed` 有助于尽量复现结果；但不同机器/BLAS/并行策略可能仍会带来轻微随机性差异。
+```bash
+pip install pyyaml
+```
+
+### R packages
+
+- `Seurat`
+- `harmony`
+- `dplyr`
+- `patchwork`
+- `ggplot2`
+- `ggrepel`
+- `yaml`
+
+## Troubleshooting
+
+- **No RDS files found**: check `rds_dir` and `pattern`.
+- **Missing `pyyaml`**: install `pyyaml` in the Python environment used by the wrapper.
+- **Missing R package `yaml`**: install it with `install.packages('yaml')`.
+- **Cluster removal error after pass 1**: use the current `fig2_harmony_integration.R`, which removes clusters using Seurat identities rather than unstable expression-based subsetting.
+- **Merge or SCTransform failure**: verify that each input file is a valid Seurat object and that genes are named consistently across samples.
+
+## Reproducibility
+
+For each run, the pipeline records both resolved parameters and the R software environment. Users are encouraged to archive:
+
+- the exact YAML used for the run,
+- the generated `params_used_fig2_harmony.yaml`, and
+- `sessionInfo_fig2.txt`.
+
+These files provide sufficient provenance to reproduce the integration settings used in the manuscript.

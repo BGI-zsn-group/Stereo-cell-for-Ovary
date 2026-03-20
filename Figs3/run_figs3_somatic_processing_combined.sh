@@ -65,6 +65,15 @@ done
 #   qc -> <OUTROOT>/qc
 #   processing -> <OUTROOT>/somatic_processing
 # and wire processing.input_rds to qc_out_rds automatically
+USER_PROC_INPUT_OVERRIDE=""
+if [[ ${#OVERRIDES[@]} -gt 0 ]]; then
+  for _ov in "${OVERRIDES[@]}"; do
+    case "${_ov%%=*}" in
+      figs3_somatic_processing.input_rds|input_rds) USER_PROC_INPUT_OVERRIDE="1" ;;
+    esac
+  done
+fi
+
 if [[ -n "$OUTROOT" ]]; then
   OVERRIDES+=(
     "figs3_qc.qc_out_dir=$OUTROOT/qc"
@@ -72,8 +81,13 @@ if [[ -n "$OUTROOT" ]]; then
     "figs3_somatic_processing.out_dir=$OUTROOT/somatic_processing"
     "figs3_somatic_processing.out_round1_rds=$OUTROOT/somatic_processing/somatic.round1.rds"
     "figs3_somatic_processing.out_final_rds=$OUTROOT/somatic_processing/somatic.final.rds"
-    "figs3_somatic_processing.input_rds=$OUTROOT/qc/somatic.qc_processed.rds"
   )
+
+  if [[ "$ONLY" == "all" || -z "$ONLY" ]]; then
+    OVERRIDES+=("figs3_somatic_processing.input_rds=$OUTROOT/qc/somatic.qc_processed.rds")
+  elif [[ "$ONLY" == "somatic_processing" && -z "$USER_PROC_INPUT_OVERRIDE" && -f "$OUTROOT/qc/somatic.qc_processed.rds" ]]; then
+    OVERRIDES+=("figs3_somatic_processing.input_rds=$OUTROOT/qc/somatic.qc_processed.rds")
+  fi
 fi
 
 find_config(){
@@ -111,16 +125,63 @@ if mkey not in mods:
   raise SystemExit(f"ERROR: module '{mkey}' not found under modules in {combined}")
 mod = mods[mkey]
 
-def set_path(d, path, val):
-  ks=[k for k in path.split('.') if k]
-  cur=d
-  for k in ks[:-1]:
-    if k not in cur or cur[k] is None:
-      cur[k]={}
-    cur=cur[k]
+def parse_value(val):
+  if val == "":
+    return ""
+  try:
+    return yaml.safe_load(val)
+  except Exception:
+    return val
+
+def set_path(root, path, val):
+  ks = [k for k in path.split('.') if k]
   if not ks:
     raise SystemExit("ERROR: empty override key")
-  cur[ks[-1]]=val
+
+  cur = root
+  parent = None
+  parent_key = None
+
+  for i, k in enumerate(ks[:-1]):
+    nxt = ks[i + 1]
+    want_list = nxt.isdigit()
+
+    if k.isdigit():
+      idx = int(k)
+      if not isinstance(cur, list):
+        new_list = []
+        if parent is None:
+          raise SystemExit(f"ERROR: path '{path}' cannot start with list index")
+        parent[parent_key] = new_list
+        cur = new_list
+      while len(cur) <= idx:
+        cur.append(None)
+      if cur[idx] is None:
+        cur[idx] = [] if want_list else {}
+      parent, parent_key, cur = cur, idx, cur[idx]
+    else:
+      if not isinstance(cur, dict):
+        raise SystemExit(f"ERROR: override path '{path}' conflicts with existing non-dict node at '{k}'")
+      if k not in cur or cur[k] is None:
+        cur[k] = [] if want_list else {}
+      parent, parent_key, cur = cur, k, cur[k]
+
+  last = ks[-1]
+  value = parse_value(val)
+  if last.isdigit():
+    idx = int(last)
+    if not isinstance(cur, list):
+      if parent is None:
+        raise SystemExit(f"ERROR: path '{path}' cannot end in list index at root")
+      parent[parent_key] = []
+      cur = parent[parent_key]
+    while len(cur) <= idx:
+      cur.append(None)
+    cur[idx] = value
+  else:
+    if not isinstance(cur, dict):
+      raise SystemExit(f"ERROR: override path '{path}' conflicts with existing non-dict leaf parent")
+    cur[last] = value
 
 for ov in ovs:
   if not ov or '=' not in ov:

@@ -1,155 +1,225 @@
-# Figs3 — Somatic QC → Harmony integration → annotation
+# Figs3: Somatic-cell QC and downstream integration
 
-本目录用于复现 **Supplementary Fig.S3（Figs3）**。  
-现在的默认流程已经调整为：
+## Overview
 
-1. **sc_qc / somatic QC**
-2. **somatic processing（Harmony + 两轮清理 + 注释）**
+This directory contains the analysis workflow used for **Supplementary Fig. 3 (Figs3)**, focusing on somatic-cell quality control, integration, clustering, and cell-type annotation.
 
-也就是说，推荐入口 `run_figs3_somatic_processing_combined.sh` 会先跑 QC，再把 QC 输出自动作为下游整合脚本的输入。
+The workflow is organized into two sequential modules:
 
----
+1. **Somatic QC**  
+   Performs per-sample quality control on Seurat objects, including mitochondrial-content filtering, UMI outlier filtering, and doublet detection with `scDblFinder`.
 
-## 目录结构
+2. **Somatic processing**  
+   Uses the QC-processed object for two rounds of SCTransform/Harmony-based integration, cluster removal, dimensionality reduction, and cell-type annotation.
 
-```text
-Figs3/
-  Copy-sc_qc.r                    # 你原始的 sc_qc 脚本（参考）
-  figs3_somatic_qc.R              # repo 中实际调用的 QC 脚本
-  figs3_somatic_processing.R      # 下游整合/聚类/注释
-  run_figs3_somatic_processing_combined.sh
-  configs/
-    figs3_combined.yaml
-```
+In the revised workflow, **multiple input `.rds` files can be provided to the QC module**, each with an explicit `sample` label. Each input object is QC-processed independently, then all QC-passed objects are merged into a single Seurat object. The merged object retains the user-specified sample label in `meta.data$sample`, which is then used in downstream processing.
 
 ---
 
-## 推荐运行方式
+## Repository contents
 
-从仓库根目录执行：
+- `figs3_somatic_qc.txt`  
+  R script for somatic-cell quality control.
+
+- `figs3_somatic_processing.txt`  
+  R script for downstream integration and annotation.
+
+- `run_figs3_somatic_processing_combined.sh`  
+  Combined runner for QC only, downstream processing only, or the full workflow.
+
+- `figs3_combined.yaml`  
+  YAML configuration file for both modules.
+
+> In this repository, some R scripts may carry a `.txt` suffix for packaging consistency. They should still be executed with `Rscript`.
+
+---
+
+## Requirements
+
+### R packages
+
+The workflow requires at least the following R packages:
+
+- `Seurat`
+- `sctransform`
+- `harmony`
+- `yaml`
+- `dplyr`
+- `ggplot2`
+- `Matrix`
+- `SingleCellExperiment`
+- `scDblFinder`
+
+Depending on the exact local environment, additional visualization packages may also be needed.
+
+### Input format
+
+Each input file must be a valid **Seurat object** saved as `.rds`.
+
+For the multi-input QC mode, each `.rds` should correspond to one sample/replicate, and the sample label is supplied explicitly at run time or in the YAML file.
+
+---
+
+## Workflow logic
+
+### 1. Somatic QC
+
+For each input Seurat object:
+
+- compute mitochondrial fraction (`percent.mt`)
+- filter cells above the configured mitochondrial threshold
+- filter high-UMI outliers using an IQR-based rule
+- run `scDblFinder`
+- retain singlets only
+- assign the user-provided `sample` label to all retained cells
+
+After all inputs are QC-processed independently, the resulting Seurat objects are merged into a single QC-filtered object.
+
+### 2. Somatic processing
+
+The merged QC-filtered object is then processed through:
+
+- sample-aware preprocessing
+- feature selection excluding ribosomal/mitochondrial genes
+- cell-cycle scoring
+- **Round 1** Harmony integration, clustering, and UMAP
+- removal of selected clusters after Round 1
+- **Round 2** Harmony integration, clustering, and UMAP
+- removal of selected clusters after Round 2
+- annotation of final clusters using `celltype_map`
+
+If the input object already contains a usable `sample` column, the downstream module keeps it. A fallback `sample_map` can still be used for legacy inputs that do not yet contain `sample`.
+
+---
+
+## Recommended usage
+
+### A. Full workflow: multiple raw `.rds` inputs -> QC -> merge -> downstream processing
 
 ```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh
+bash Figs3/run_figs3_somatic_processing_combined.sh \
+  -o result/Figs3 \
+  --set figs3_qc.qc_inputs.0.path=/path/PD14_1.rds \
+  --set figs3_qc.qc_inputs.0.sample=PD14-1 \
+  --set figs3_qc.qc_inputs.1.path=/path/PD14_2.rds \
+  --set figs3_qc.qc_inputs.1.sample=PD14-2 \
+  --set figs3_qc.qc_inputs.2.path=/path/PD49_1.rds \
+  --set figs3_qc.qc_inputs.2.sample=PD49-1 \
+  --set figs3_qc.qc_inputs.3.path=/path/PD49_2.rds \
+  --set figs3_qc.qc_inputs.3.sample=PD49-2
 ```
 
-默认等价于：
+This mode:
+
+- QC-processes each input independently
+- merges all QC-passed objects
+- stores the provided labels in `meta.data$sample`
+- runs downstream integration and annotation on the merged object
+
+### B. QC only
 
 ```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh --only all
+bash Figs3/run_figs3_somatic_processing_combined.sh \
+  --only qc \
+  -o result/Figs3 \
+  --set figs3_qc.qc_inputs.0.path=/path/PD14_1.rds \
+  --set figs3_qc.qc_inputs.0.sample=PD14-1 \
+  --set figs3_qc.qc_inputs.1.path=/path/PD14_2.rds \
+  --set figs3_qc.qc_inputs.1.sample=PD14-2
 ```
 
-执行顺序为：
+### C. Downstream processing only
 
-```text
-figs3_qc  ->  figs3_somatic_processing
+Use this mode when a merged QC-processed Seurat object is already available:
+
+```bash
+bash Figs3/run_figs3_somatic_processing_combined.sh \
+  --only somatic_processing \
+  -o result/Figs3 \
+  --set figs3_somatic_processing.input_rds=/path/obj_merge_qc.rds
 ```
 
 ---
 
-## 常用命令
+## Configuration
 
-### 1) 只跑 QC
-```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh --only qc
-```
+### QC module
 
-### 2) 只跑后处理
-适用于你已经有 QC 输出时：
+The QC module accepts either a legacy single-input field:
 
-```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh --only somatic_processing
-```
-
-### 3) 改输出根目录
-```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh -o results/Figs3_alt
-```
-
-这会自动同步为：
-
-- QC 输出：`results/Figs3_alt/qc/`
-- 后处理输出：`results/Figs3_alt/somatic_processing/`
-- 同时把 `figs3_somatic_processing.input_rds` 指到新的 QC 输出 RDS
-
-### 4) 精确改配置项
-```bash
-bash Figs3/run_figs3_somatic_processing_combined.sh   --set figs3_qc.qc_input_rds=/path/to/raw_merged_somatic.rds   --set figs3_somatic_processing.out_dir=results/Figs3_custom/somatic_processing
-```
-
----
-
-## YAML 逻辑（关键更新）
-
-`configs/figs3_combined.yaml` 现在已经改成默认串联：
-
-### QC 模块
 ```yaml
-modules:
-  figs3_qc:
-    qc_input_rds: data/Figs3/qc/somatic_seurat_object.rds
-    qc_out_rds: results/Figs3/qc/somatic.qc_processed.rds
+qc_input_rds: data/Figs3/qc/somatic_seurat_object.rds
 ```
 
-### Processing 模块
+or the preferred multi-input structure:
+
 ```yaml
-modules:
-  figs3_somatic_processing:
-    input_rds: results/Figs3/qc/somatic.qc_processed.rds
+qc_inputs:
+  - path: data/Figs3/qc/PD14_1.rds
+    sample: PD14-1
+  - path: data/Figs3/qc/PD14_2.rds
+    sample: PD14-2
+  - path: data/Figs3/qc/PD49_1.rds
+    sample: PD49-1
 ```
 
-也就是说，**processing 默认直接吃 QC 的输出**。
+Important QC parameters include:
+
+- `qc_percent_mt_max`
+- `qc_umi_iqr_multiplier`
+- `qc_doublet_rate`
+- `qc_species`
+
+### Downstream module
+
+Important downstream parameters include:
+
+- `input_rds`
+- `exclude_regex`
+- `nfeatures_round1`
+- `nfeatures_round2`
+- `pipeline_round1.*`
+- `pipeline_round2.*`
+- `exclude_clusters_round1`
+- `exclude_clusters_round2`
+- `celltype_map`
 
 ---
 
-## 关于 `sample_map`
+## Expected outputs
 
-由于 QC 后输入通常是一个合并后的 Seurat 对象，`figs3_somatic_processing.R` 现在支持：
+### QC outputs
 
-- 直接读取 `input_rds`
-- 如果对象里还没有合适的 `sample` 列，则用 `sample_map` 把 `orig.ident` 映射到时间点标签
+Under `result/Figs3/qc/` (or the configured output root):
 
-示例：
-
-```yaml
-sample_map:
-  PD14-1: P14
-  PD14-2: P14
-  PD21-1: P21
-  PD21-3: P21
-  PD49-1: P49
-  PD49-2: P49
-```
-
----
-
-## 主要输出
-
-### QC
-默认在 `results/Figs3/qc/`：
 - `somatic.qc_processed.rds`
-- `somatic.Raw.QC.VlnPlot.pdf`
-- `somatic.MTQCed.VlnPlot.pdf`
-- `somatic.UMIQCed.VlnPlot.pdf`
-- `somatic.Final.QC.VlnPlot.pdf`
-- `somatic.qc.log`
+- QC violin plots at different filtering stages
+- `somatic.doublet_scores.tsv`
+- `somatic.qc_stats.yaml`
+- parameter snapshot and `sessionInfo`
 
-### Somatic processing
-默认在 `results/Figs3/somatic_processing/`：
+### Downstream outputs
+
+Under `result/Figs3/somatic_processing/`:
+
 - `somatic.round1.rds`
 - `somatic.final.rds`
-- `somatic.round1.umap.pdf`
-- `somatic.round2.umap.pdf`
-- `somatic.final.umap.pdf`
-- `somatic.cell_counts_by_sample_celltype.csv`
-- `somatic.processing.log`
+- UMAP plots for intermediate/final objects
+- cell count summary tables
+- parameter snapshot and `sessionInfo`
+- processing log
 
 ---
 
-## 这次同步更新了哪些文件
+## Notes for reproducibility
 
-本次已经按“先 QC，再处理”的逻辑同步更新：
+- Always prefer absolute paths for input `.rds` files in command-line overrides.
+- For multi-sample analyses, provide unique and stable `sample` labels at the QC stage; these labels are propagated into the merged object.
+- If running downstream processing only, ensure that the input object already contains a valid `sample` column, or provide a fallback `sample_map` in the YAML configuration.
+- Cluster exclusion and cell-type annotation are dataset-specific and may require adjustment for independent datasets.
 
-1. `run_figs3_somatic_processing_combined.sh`
-2. `figs3_combined.yaml`
-3. `figs3_somatic_processing.R`
-4. `README.md`
+---
+
+## Citation
+
+If you use this code or adapt this workflow in your own work, please cite the associated study and the software packages used in the analysis, including Seurat, Harmony, and scDblFinder.

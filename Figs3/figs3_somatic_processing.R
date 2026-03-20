@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # Figs3 | Somatic processing (Harmony integration + two-round cleanup)
@@ -155,6 +154,12 @@ run_harmony_pipeline <- function(
 
   obj <- ScaleData(obj, vars.to.regress = c("S.Score", "G2M.Score"), verbose = FALSE)
   obj <- RunPCA(obj, features = features, verbose = FALSE)
+
+  if (!harmony_group %in% colnames(obj@meta.data)) {
+    fallback_group <- if ("sample" %in% colnames(obj@meta.data)) "sample" else "orig.ident"
+    message("[figs3] harmony_group '", harmony_group, "' not found; fallback to ", fallback_group)
+    harmony_group <- fallback_group
+  }
 
   obj <- RunHarmony(
     object = obj,
@@ -324,8 +329,16 @@ p_umap1_clust  <- DimPlot(obj_merge_proc, reduction = "umap", group.by = "seurat
 ggsave(file.path(out_dir, paste0(prefix, ".round1.umap.pdf")), p_umap1_sample + p_umap1_orig + p_umap1_clust, width = 14, height = 5)
 
 exclude1 <- as.character(unlist(cfg$exclude_clusters_round1 %||% c("3", "14")))
-obj_subset <- subset(obj_merge_proc, subset = !(seurat_clusters %in% exclude1))
-message("[figs3] after exclude round1 clusters {", paste(exclude1, collapse = ","), "} cells: ", ncol(obj_subset))
+Idents(obj_merge_proc) <- "seurat_clusters"
+present1 <- intersect(exclude1, levels(Idents(obj_merge_proc)))
+
+if (length(present1) > 0) {
+  obj_subset <- subset(obj_merge_proc, idents = present1, invert = TRUE)
+  message("[figs3] after exclude round1 clusters {", paste(present1, collapse = ","), "} cells: ", ncol(obj_subset))
+} else {
+  obj_subset <- obj_merge_proc
+  message("[figs3] no round1 exclude clusters found in object; skip exclusion")
+}
 
 # ---- Round 2 ----
 Idents(obj_subset) <- "orig.ident"
@@ -360,8 +373,16 @@ p_umap2_clust  <- DimPlot(obj_subset_proc, reduction = "umap", group.by = "seura
 ggsave(file.path(out_dir, paste0(prefix, ".round2.umap.pdf")), p_umap2_sample + p_umap2_orig + p_umap2_clust, width = 14, height = 5)
 
 exclude2 <- as.character(unlist(cfg$exclude_clusters_round2 %||% c("25", "12")))
-obj_final <- subset(obj_subset_proc, subset = !(seurat_clusters %in% exclude2))
-message("[figs3] after exclude round2 clusters {", paste(exclude2, collapse = ","), "} cells: ", ncol(obj_final))
+Idents(obj_subset_proc) <- "seurat_clusters"
+present2 <- intersect(exclude2, levels(Idents(obj_subset_proc)))
+
+if (length(present2) > 0) {
+  obj_final <- subset(obj_subset_proc, idents = present2, invert = TRUE)
+  message("[figs3] after exclude round2 clusters {", paste(present2, collapse = ","), "} cells: ", ncol(obj_final))
+} else {
+  obj_final <- obj_subset_proc
+  message("[figs3] no round2 exclude clusters found in object; skip exclusion")
+}
 
 obj_final <- apply_celltype_map(obj_final, cfg$celltype_map)
 

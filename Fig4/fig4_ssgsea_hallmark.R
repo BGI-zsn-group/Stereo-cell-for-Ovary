@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env Rscript
 # Fig4: Hallmark ssGSEA on GC celltype-average expression (standalone module)
 #
@@ -99,7 +98,14 @@ celltype_order <- cfg$celltype_order
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 logf <- file.path(out_dir, paste0(prefix, ".hallmark_ssgsea.log"))
-sink(logf, split = TRUE)
+log_con <- file(logf, open = "wt")
+sink(log_con, split = TRUE)
+sink(log_con, type = "message")
+on.exit({
+  try(sink(type = "message"), silent = TRUE)
+  try(sink(), silent = TRUE)
+  try(close(log_con), silent = TRUE)
+}, add = TRUE)
 cat("[Info] input_rds:", input_rds, "\n")
 cat("[Info] out_dir:", out_dir, "\n")
 cat("[Info] prefix:", prefix, "\n")
@@ -188,9 +194,12 @@ miss <- setdiff(keep, rownames(gsva_res))
 if (length(miss) > 0) cat("[Warn] pathways not found:", paste(miss, collapse = ", "), "\n")
 
 mat_sel <- gsva_res[keep_in, , drop = FALSE]
+if (nrow(mat_sel) == 0) stop("No selected Hallmark pathways remain after filtering.", call. = FALSE)
 
 # Reorder columns if requested
 if (!is.null(celltype_order)) {
+  miss_ct <- setdiff(celltype_order, colnames(mat_sel))
+  if (length(miss_ct) > 0) cat("[Warn] requested celltypes not found:", paste(miss_ct, collapse = ", "), "\n")
   celltype_order <- intersect(celltype_order, colnames(mat_sel))
   if (length(celltype_order) > 0) {
     mat_sel <- mat_sel[, celltype_order, drop = FALSE]

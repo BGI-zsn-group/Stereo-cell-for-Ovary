@@ -23,6 +23,17 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0 && !all(is.na(a))) a else b
 
+cells_where <- function(obj, meta_col, keep_values = NULL, drop_values = NULL) {
+  if (!inherits(obj, "Seurat")) stop("cells_where expects a Seurat object.", call. = FALSE)
+  if (!meta_col %in% colnames(obj@meta.data)) stop("meta.data missing column: ", meta_col, call. = FALSE)
+  vals <- as.character(obj@meta.data[[meta_col]])
+  keep <- rep(TRUE, length(vals))
+  if (!is.null(keep_values)) keep <- keep & vals %in% as.character(keep_values)
+  if (!is.null(drop_values)) keep <- keep & !(vals %in% as.character(drop_values))
+  rownames(obj@meta.data)[keep]
+}
+
+
 parse_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
   out <- list()
@@ -184,7 +195,7 @@ if (!inherits(obj, "Seurat")) stop("Expected Seurat object in input_rds.", call.
 subset_celltypes <- as.character(unlist(cfg$subset_celltypes %||% c("GC_Antral_Mural", "GC_Preantral", "GC_Column")))
 if (!"celltype" %in% colnames(obj@meta.data)) stop("meta.data missing `celltype` column.", call. = FALSE)
 
-obj_gr <- subset(obj, subset = celltype %in% subset_celltypes)
+obj_gr <- subset(obj, cells = cells_where(obj, "celltype", keep_values = subset_celltypes))
 message("[fig4-gc] subset celltypes: ", paste(subset_celltypes, collapse = ", "))
 message("[fig4-gc] subset cells: ", ncol(obj_gr))
 
@@ -236,7 +247,7 @@ ggsave(file.path(out_dir, paste0(prefix, ".round1.umap.pdf")), p_umap1_orig + p_
 
 # ---- Remove low-quality clusters (Round 1) ----
 exclude1 <- as.character(unlist(cfg$exclude_clusters_round1 %||% c("6","7","15","16","19")))
-obj_r1f <- subset(obj_r1, subset = !(seurat_clusters %in% exclude1))
+obj_r1f <- subset(obj_r1, cells = cells_where(obj_r1, "seurat_clusters", drop_values = exclude1))
 message("[fig4-gc] exclude round1 clusters: ", paste(exclude1, collapse = ", "))
 message("[fig4-gc] cells after round1 filter: ", ncol(obj_r1f))
 
@@ -279,7 +290,7 @@ obj_r2 <- run_harmony_pipeline(
 
 # Remove additional low-quality cluster(s) after round2
 exclude2 <- as.character(unlist(cfg$exclude_clusters_round2 %||% c("8")))
-obj_r2f <- subset(obj_r2, subset = !(seurat_clusters %in% exclude2))
+obj_r2f <- subset(obj_r2, cells = cells_where(obj_r2, "seurat_clusters", drop_values = exclude2))
 message("[fig4-gc] exclude round2 clusters: ", paste(exclude2, collapse = ", "))
 message("[fig4-gc] cells after round2 filter: ", ncol(obj_r2f))
 

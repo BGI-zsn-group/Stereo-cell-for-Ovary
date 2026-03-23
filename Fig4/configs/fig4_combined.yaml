@@ -321,10 +321,10 @@ modules:
     parallel_sz: 10
     celltype_order:
     - GC_Progenitor
-    - GC_Preantral
     - GC_Preantral_1
-    - GC_Cumulus
+    - GC_Preantral_2
     - GC_Cumulus_1
+    - GC_Cumulus_2
     - GC_Antral_Mural
     - GC_Atretic
     keep_pathways:

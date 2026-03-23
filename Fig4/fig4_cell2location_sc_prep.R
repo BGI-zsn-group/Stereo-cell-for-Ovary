@@ -17,6 +17,26 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0 && !all(is.na(a))) a else b
 
+cells_match <- function(obj, filters = list(), exclude = list()) {
+  if (!inherits(obj, "Seurat")) stop("cells_match expects a Seurat object.", call. = FALSE)
+  md <- obj@meta.data
+  keep <- rep(TRUE, nrow(md))
+  if (length(filters) > 0) {
+    for (nm in names(filters)) {
+      if (!nm %in% colnames(md)) stop("meta.data missing column: ", nm, call. = FALSE)
+      keep <- keep & as.character(md[[nm]]) %in% as.character(filters[[nm]])
+    }
+  }
+  if (length(exclude) > 0) {
+    for (nm in names(exclude)) {
+      if (!nm %in% colnames(md)) stop("meta.data missing column: ", nm, call. = FALSE)
+      keep <- keep & !(as.character(md[[nm]]) %in% as.character(exclude[[nm]]))
+    }
+  }
+  rownames(md)[keep]
+}
+
+
 parse_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
   out <- list()
@@ -127,7 +147,7 @@ if (!is.null(cfg$gc_celltype_levels) && !is.null(cfg$gc_cluster_to_celltype)) {
 }
 
 # Keep only target sample's GC
-obj_gr_target <- subset(obj_gr, subset = get(sample_col) == target_sample)
+obj_gr_target <- subset(obj_gr, cells = cells_match(obj_gr, filters = setNames(list(target_sample), sample_col)))
 message("[fig4-c2l-sc] obj_gr_target cells: ", ncol(obj_gr_target))
 
 # Load full annotated object and remove GC-like labels for the same target sample
@@ -141,7 +161,11 @@ message("[fig4-c2l-sc] exclude celltypes in obj_total (within target sample): ",
 
 obj_me <- subset(
   obj_total,
-  subset = (get(sample_col) == target_sample) & !(get(celltype_col_total) %in% exclude_celltypes)
+  cells = cells_match(
+    obj_total,
+    filters = setNames(list(target_sample), sample_col),
+    exclude = setNames(list(exclude_celltypes), celltype_col_total)
+  )
 )
 message("[fig4-c2l-sc] obj_me cells: ", ncol(obj_me))
 

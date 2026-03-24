@@ -1,10 +1,16 @@
 #!/usr/bin/env Rscript
-# Fig4: Cell2location single-cell reference preparation (patched)
+# Fig4: Cell2location single-cell reference preparation (patched v3)
 #
 # Purpose
 # - Replace the GC population in a chosen sample (default: P49) with a refined GC subset
 #   and merge it with the remaining non-GC somatic cells from the full annotated object.
 # - Export the merged Seurat object to .h5ad for Cell2location.
+#
+# Key patches in v3
+# - robust metadata subsetting (avoid subset/get pitfalls)
+# - robust cluster->celltype mapping in obj@meta.data
+# - explicit reticulate/python binding before sceasy::convertFormat
+# - never try to auto-download uv / create ephemeral python envs
 
 suppressPackageStartupMessages({
   library(yaml)
@@ -40,6 +46,12 @@ help_msg <- function() {
 
 Required:
   --config <yaml>     YAML config path
+
+Optional YAML keys:
+  python_bin: /path/to/python
+
+Env fallback:
+  FIG4_C2L_SC_PYTHON or RETICULATE_PYTHON
 
 Example:
   Rscript fig4_cell2location_sc_prep.R --config Fig4/configs/fig4_cell2location_sc_prep.yaml
@@ -121,6 +133,62 @@ subset_total_non_gc <- function(obj, sample_col, target_sample, celltype_col, ex
     stop("No non-GC cells kept from obj_total for target sample ", target_sample, call. = FALSE)
   }
   subset(obj, cells = keep_cells)
+}
+
+resolve_python_bin <- function(cfg) {
+  candidates <- c(
+    as.character(cfg$python_bin %||% ""),
+    Sys.getenv("FIG4_C2L_SC_PYTHON", unset = ""),
+    Sys.getenv("RETICULATE_PYTHON", unset = ""),
+    Sys.which("python3"),
+    Sys.which("python")
+  )
+  candidates <- unique(candidates[nzchar(candidates)])
+  for (p in candidates) {
+    if (file.exists(p)) return(normalizePath(p, winslash = "/", mustWork = TRUE))
+  }
+  ""
+}
+
+bind_python_for_sceasy <- function(cfg) {
+  if (!requireNamespace("reticulate", quietly = TRUE)) {
+    stop("Package 'reticulate' is required by sceasy but is not installed.", call. = FALSE)
+  }
+
+  py <- resolve_python_bin(cfg)
+  if (!nzchar(py)) {
+    stop(
+      paste0(
+        "Could not find a usable Python binary for sceasy. ",
+        "Set one of: cfg$python_bin, FIG4_C2L_SC_PYTHON, or RETICULATE_PYTHON."
+      ),
+      call. = FALSE
+    )
+  }
+
+  # prevent reticulate from trying to auto-provision a fresh env via uv
+  Sys.setenv(RETICULATE_PYTHON = py)
+  Sys.setenv(RETICULATE_AUTOINSTALL = "FALSE")
+
+  reticulate::use_python(py, required = TRUE)
+  cfg_py <- reticulate::py_config()
+  message("[fig4-c2l-sc] reticulate python: ", cfg_py$python)
+  message("[fig4-c2l-sc] python version: ", cfg_py$version)
+
+  needed <- c("anndata", "numpy", "pandas")
+  missing <- needed[!vapply(needed, reticulate::py_module_available, logical(1))]
+  if (length(missing) > 0) {
+    stop(
+      paste0(
+        "Selected Python is missing required modules for h5ad export: ",
+        paste(missing, collapse = ", "),
+        ". Use a Python env that already has these packages."
+      ),
+      call. = FALSE
+    )
+  }
+
+  invisible(py)
 }
 
 args <- parse_args()
@@ -210,6 +278,10 @@ message("[fig4-c2l-sc] merged cells: ", ncol(obj_total_new))
 saveRDS(obj_total_new, out_rds)
 message("[fig4-c2l-sc] saved merged Seurat: ", out_rds)
 
+# Explicitly bind to an existing python before any anndata conversion.
+py_used <- bind_python_for_sceasy(cfg)
+message("[fig4-c2l-sc] exporting via sceasy using python: ", py_used)
+
 sceasy::convertFormat(
   obj_total_new,
   from = "seurat",
@@ -223,6 +295,7 @@ params_used <- cfg
 params_used$resolved <- list(
   obj_gr_rds = obj_gr_rds,
   obj_total_rds = obj_total_rds,
+  python_bin = py_used,
   out_dir = out_dir,
   out_h5ad = out_h5ad,
   out_merged_rds = out_rds,

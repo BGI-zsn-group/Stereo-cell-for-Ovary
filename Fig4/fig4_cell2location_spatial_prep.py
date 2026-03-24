@@ -215,7 +215,7 @@ def main():
         adata.layers["counts"] = np.array(adata.layers["counts"], copy=True)
 
     orig_qc_h5ad = out_dir / f"{prefix}.orig_qc_counts.h5ad"
-    sc.write_h5ad(str(orig_qc_h5ad), adata)
+    adata.write_h5ad(str(orig_qc_h5ad), adata)
     _log(f"[save] orig_qc_counts={orig_qc_h5ad}", log_fh)
 
     # Processed (for clustering / selection)
@@ -261,7 +261,7 @@ def main():
         leiden_resolutions = cfg.get("leiden_resolutions", {"leiden_10": 1.0, "leiden_15": 1.5})
         for key, res in leiden_resolutions.items():
             sc.tl.leiden(adata_proc, resolution=float(res), key_added=str(key))
-        sc.write_h5ad(str(processed_h5ad), adata_proc)
+        adata_proc.write_h5ad(str(processed_h5ad), adata_proc)
         _log(f"[save] processed={processed_h5ad}", log_fh)
 
         # subset by excluding clusters (optional)
@@ -275,7 +275,7 @@ def main():
             keep_mask = ~adata_proc.obs[leiden_key].astype(str).isin(exclude_clusters)
             adata_proc_sub = adata_proc[keep_mask].copy()
             subset_cells = adata_proc_sub.obs_names.tolist()
-            sc.write_h5ad(str(subset_processed_h5ad), adata_proc_sub)
+            adata_proc_sub.write_h5ad(str(subset_processed_h5ad), adata_proc_sub)
             _log(f"[subset] by clusters: kept {len(subset_cells)} cells/spots; saved {subset_processed_h5ad}", log_fh)
         else:
             subset_cells = adata_proc.obs_names.tolist()
@@ -302,7 +302,7 @@ def main():
         adata_counts = adata_counts[keep, :].copy()
         cell2loc_h5ad = out_dir / f"{prefix}.cell2location_spatial_counts_roi.h5ad"
 
-    sc.write_h5ad(str(cell2loc_h5ad), adata_counts)
+    adata_counts.write_h5ad(str(cell2loc_h5ad), adata_counts)
     _log(f"[save] cell2location spatial counts={cell2loc_h5ad}", log_fh)
 
     # provenance

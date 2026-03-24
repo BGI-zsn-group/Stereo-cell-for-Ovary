@@ -16,12 +16,12 @@ Steps:
 
 Input shortcuts:
   - `-i PATH`
-      Fast path for a single-step run, or for the compatible middle-step chain
-      `ssgsea,monocle3,c2l_sc` (all will use the same GC RDS as input).
+      Fast path for a single-step run, or for the compatible chain
+      `ssgsea,monocle3,c2l_sc` (all will use the same GC refined RDS).
   - `-i alias=PATH`
       Explicit input override. Supported aliases:
         gc_rds              -> fig4_gc_processing.input_rds
-        gc_result_rds       -> set the same GC result RDS for ssgsea/monocle3/c2l_sc
+        gc_result_rds       -> same GC result RDS for ssgsea/monocle3/c2l_sc
         ssgsea_rds          -> fig4_ssgsea_hallmark.input_rds
         monocle3_rds        -> fig4_monocle3.input_rds
         c2l_sc_gc_rds       -> fig4_cell2location_sc_prep.obj_gr_rds
@@ -30,32 +30,12 @@ Input shortcuts:
         train_sc_h5ad       -> fig4_cell2location_train.single_cell.input_h5ad
         train_spatial_h5ad  -> fig4_cell2location_train.spatial.input_h5ad
 
-Notes:
-  - `--set` supports nested keys with dots (e.g., pipeline_round2.cluster_resolution=1.2).
-  - Module-scoped overrides are supported: <module>.<key>=<value>
-      e.g. fig4_gc_processing.out_dir=results/Fig4_alt/gc_processing
-    These will apply ONLY to the matching module; others are ignored.
-  - `-o/--out` redirects ALL outputs under a base directory,
-    and also rewires downstream auto-inputs to those new outputs.
-  - Explicit `-i/--input` overrides win over `-o` auto-wiring.
-
-Examples:
-  # run all steps using default config
-  bash Fig4/run_fig4_combined.sh
-
-  # run only GC processing with a custom input
-  bash Fig4/run_fig4_combined.sh --only gc -i data/Fig4/obj_all_withanno.rds
-
-  # run middle steps from an existing GC object
-  bash Fig4/run_fig4_combined.sh --only ssgsea,monocle3,c2l_sc -i results/Fig4/gc_processing/obj_gr_newanno.rds
-
-  # run train with explicit sc + spatial inputs
-  bash Fig4/run_fig4_combined.sh --only c2l_train \
-    -i train_sc_h5ad=results/Fig4/cell2location_sc_ref/somatic_1226.h5ad \
-    -i train_spatial_h5ad=results/Fig4/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad
-
-  # redirect all outputs
-  bash Fig4/run_fig4_combined.sh -o results/Fig4_alt
+Rules:
+  - `-o/--out` rewires outputs and downstream auto-inputs under one base dir.
+  - Explicit `-i` and `--set` always win over `-o` auto-wiring.
+  - For `c2l_sc`, if you do not specify `obj_gr_rds`, it can auto-use the GC
+    result under `-o/gc_processing/obj_gr_newanno.rds`; if you do specify it,
+    your explicit path is used.
 USAGE
 }
 
@@ -73,7 +53,8 @@ DRY_RUN=0
 PYTHON_BIN="${PYTHON_BIN:-python}"
 R_BIN="${R_BIN:-Rscript}"
 
-declare -a OVERRIDES=()
+declare -a USER_OVERRIDES=()
+declare -a AUTO_OVERRIDES=()
 declare -a INPUT_SPECS=()
 declare -a SELECTED_STEPS=()
 
@@ -101,7 +82,7 @@ while [[ $# -gt 0 ]]; do
       [[ "${2}" == *"="* ]] || die "Override must be key=value (got '${2}')"
       KEY="${2%%=*}"
       [[ -n "$KEY" ]] || die "Override key cannot be empty (got '${2}')"
-      OVERRIDES+=("$2"); shift 2;;
+      USER_OVERRIDES+=("$2"); shift 2;;
     --config)
       [[ $# -ge 2 ]] || die "Missing value for --config"
       CONFIG="$2"; shift 2;;
@@ -136,7 +117,7 @@ run(){
 extract_module(){
   local combined="$1"; local module_key="$2"; local out_cfg="$3"; shift 3
   "$PYTHON_BIN" - <<'PY' "$combined" "$module_key" "$out_cfg" "$@"
-import sys, os
+import sys
 try:
   import yaml
 except Exception as e:
@@ -145,7 +126,7 @@ except Exception as e:
 combined_path, module_key, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
 overrides = sys.argv[4:]
 
-data = yaml.safe_load(open(combined_path,'r',encoding='utf-8')) or {}
+data = yaml.safe_load(open(combined_path, 'r', encoding='utf-8')) or {}
 mods = data.get('modules') or {}
 if module_key not in mods:
   raise SystemExit(f"ERROR: module '{module_key}' not found under modules in {combined_path}")
@@ -161,10 +142,10 @@ def parse_value(v: str):
     return v
 
 def set_path(d, path, val):
-  ks=[k for k in path.split('.') if k]
+  ks = [k for k in path.split('.') if k]
   if not ks:
     raise SystemExit("ERROR: override key is empty after normalization")
-  cur=d
+  cur = d
   for k in ks[:-1]:
     if k not in cur or cur[k] is None or not isinstance(cur[k], dict):
       cur[k] = {}
@@ -178,7 +159,7 @@ for ov in overrides:
     continue
   if '=' not in ov:
     raise SystemExit(f"ERROR: override must be key=value (got '{ov}')")
-  k,v = ov.split('=',1)
+  k, v = ov.split('=', 1)
   k = k.strip()
   if not k:
     raise SystemExit(f"ERROR: override key cannot be empty (got '{ov}')")
@@ -187,13 +168,13 @@ for ov in overrides:
   if head in module_keys:
     if head != module_key:
       continue
-    k = k.split('.', 1)[1] if '.' in k else ""
+    k = k.split('.', 1)[1] if '.' in k else ''
     if not k:
       raise SystemExit(f"ERROR: override key missing after module prefix (got '{ov}')")
 
   set_path(mod, k, parse_value(v))
 
-yaml.safe_dump(mod, open(out_path,'w',encoding='utf-8'), sort_keys=False, allow_unicode=True)
+yaml.safe_dump(mod, open(out_path, 'w', encoding='utf-8'), sort_keys=False, allow_unicode=True)
 PY
 }
 
@@ -202,7 +183,7 @@ run_step(){
   need "$script"
   local tmp_cfg
   tmp_cfg="$(mktemp -t fig4_${step}_XXXXXX.yaml)"
-  extract_module "$COMBINED" "$module" "$tmp_cfg" "${OVERRIDES[@]}"
+  extract_module "$COMBINED" "$module" "$tmp_cfg" "${AUTO_OVERRIDES[@]}" "${USER_OVERRIDES[@]}"
   if [[ "$kind" == "R" ]]; then
     run "$R_BIN" "$script" --config "$tmp_cfg"
   else
@@ -211,44 +192,14 @@ run_step(){
   rm -f "$tmp_cfg"
 }
 
-append_override(){
+append_auto(){
   local key="$1"; local val="$2"
-  OVERRIDES+=("${key}=${val}")
+  AUTO_OVERRIDES+=("${key}=${val}")
 }
 
-set_primary_input_for_step(){
-  local step="$1"; local path="$2"
-  case "$step" in
-    gc)          append_override "fig4_gc_processing.input_rds" "$path" ;;
-    ssgsea)      append_override "fig4_ssgsea_hallmark.input_rds" "$path" ;;
-    monocle3)    append_override "fig4_monocle3.input_rds" "$path" ;;
-    c2l_sc)      append_override "fig4_cell2location_sc_prep.obj_gr_rds" "$path" ;;
-    c2l_spatial) append_override "fig4_cell2location_spatial_prep.input_h5ad" "$path" ;;
-    c2l_train)   append_override "fig4_cell2location_train.single_cell.input_h5ad" "$path" ;;
-    *) die "cannot infer primary input mapping for step '$step'" ;;
-  esac
-}
-
-alias_input_override(){
-  local alias_name="$1"; local path="$2"
-  case "$alias_name" in
-    gc_rds|gc) append_override "fig4_gc_processing.input_rds" "$path" ;;
-    gc_result_rds|gc_result|gc_obj_rds)
-      append_override "fig4_ssgsea_hallmark.input_rds" "$path"
-      append_override "fig4_monocle3.input_rds" "$path"
-      append_override "fig4_cell2location_sc_prep.obj_gr_rds" "$path"
-      ;;
-    ssgsea_rds|ssgsea) append_override "fig4_ssgsea_hallmark.input_rds" "$path" ;;
-    monocle3_rds|monocle3) append_override "fig4_monocle3.input_rds" "$path" ;;
-    c2l_sc_gc_rds|c2l_sc) append_override "fig4_cell2location_sc_prep.obj_gr_rds" "$path" ;;
-    c2l_sc_total_rds|c2l_sc_total) append_override "fig4_cell2location_sc_prep.obj_total_rds" "$path" ;;
-    spatial_h5ad|c2l_spatial|spatial) append_override "fig4_cell2location_spatial_prep.input_h5ad" "$path" ;;
-    train_sc_h5ad|c2l_train_sc|train_sc) append_override "fig4_cell2location_train.single_cell.input_h5ad" "$path" ;;
-    train_spatial_h5ad|c2l_train_spatial|train_spatial) append_override "fig4_cell2location_train.spatial.input_h5ad" "$path" ;;
-    *)
-      die "unknown input alias '$alias_name'. Use -h to see supported aliases."
-      ;;
-  esac
+append_user(){
+  local key="$1"; local val="$2"
+  USER_OVERRIDES+=("${key}=${val}")
 }
 
 parse_selected_steps(){
@@ -261,37 +212,86 @@ parse_selected_steps(){
   fi
 }
 
-all_steps_in_middle_gc_chain(){
-  local s
-  for s in "${SELECTED_STEPS[@]}"; do
-    case "$s" in
-      ssgsea|monocle3|c2l_sc) ;;
-      *) return 1 ;;
-    esac
-  done
-  return 0
+apply_auto_out_overrides(){
+  [[ -n "$OUT_BASE" ]] || return 0
+  append_auto "fig4_gc_processing.out_dir" "$OUT_BASE/gc_processing"
+  append_auto "fig4_gc_processing.out_round1_rds" "$OUT_BASE/gc_processing/gc.round1.rds"
+  append_auto "fig4_gc_processing.out_final_rds" "$OUT_BASE/gc_processing/obj_gr_newanno.rds"
+
+  append_auto "fig4_ssgsea_hallmark.input_rds" "$OUT_BASE/gc_processing/obj_gr_newanno.rds"
+  append_auto "fig4_ssgsea_hallmark.out_dir" "$OUT_BASE/ssgsea_hallmark"
+
+  append_auto "fig4_monocle3.input_rds" "$OUT_BASE/gc_processing/obj_gr_newanno.rds"
+  append_auto "fig4_monocle3.out_dir" "$OUT_BASE/monocle3"
+  append_auto "fig4_monocle3.out_cds_rds" "$OUT_BASE/monocle3/gc.cds.rds"
+  append_auto "fig4_monocle3.out_obj_rds" "$OUT_BASE/monocle3/gc.obj_with_pseudotime.rds"
+  append_auto "fig4_monocle3.out_pseudotime_csv" "$OUT_BASE/monocle3/gc.pseudotime.csv"
+  append_auto "fig4_monocle3.out_plot_pdf" "$OUT_BASE/monocle3/gc.monocle3_pseudotime_umap.pdf"
+
+  append_auto "fig4_cell2location_sc_prep.obj_gr_rds" "$OUT_BASE/gc_processing/obj_gr_newanno.rds"
+  append_auto "fig4_cell2location_sc_prep.out_dir" "$OUT_BASE/cell2location_sc_ref"
+  append_auto "fig4_cell2location_sc_prep.out_h5ad" "$OUT_BASE/cell2location_sc_ref/somatic_1226.h5ad"
+  append_auto "fig4_cell2location_sc_prep.out_merged_rds" "$OUT_BASE/cell2location_sc_ref/somatic_1226.merged_for_cell2location.rds"
+
+  append_auto "fig4_cell2location_spatial_prep.out_dir" "$OUT_BASE/cell2location_spatial"
+
+  append_auto "fig4_cell2location_train.out_dir" "$OUT_BASE/cell2location_train"
+  append_auto "fig4_cell2location_train.single_cell.input_h5ad" "$OUT_BASE/cell2location_sc_ref/somatic_1226.h5ad"
+  append_auto "fig4_cell2location_train.spatial.input_h5ad" "$OUT_BASE/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad"
 }
 
-apply_input_specs(){
-  local spec alias_name path s
-  [[ "${#INPUT_SPECS[@]}" -eq 0 ]] && return 0
+set_primary_input_for_step(){
+  local step="$1"; local path="$2"
+  case "$step" in
+    gc)          append_user "fig4_gc_processing.input_rds" "$path" ;;
+    ssgsea)      append_user "fig4_ssgsea_hallmark.input_rds" "$path" ;;
+    monocle3)    append_user "fig4_monocle3.input_rds" "$path" ;;
+    c2l_sc)      append_user "fig4_cell2location_sc_prep.obj_gr_rds" "$path" ;;
+    c2l_spatial) append_user "fig4_cell2location_spatial_prep.input_h5ad" "$path" ;;
+    c2l_train)   append_user "fig4_cell2location_train.single_cell.input_h5ad" "$path" ;;
+    *) die "cannot infer primary input mapping for step '$step'" ;;
+  esac
+}
 
+apply_alias_input(){
+  local alias_name="$1"; local path="$2"
+  case "$alias_name" in
+    gc_rds|gc) append_user "fig4_gc_processing.input_rds" "$path" ;;
+    gc_result_rds|gc_result|gc_obj_rds)
+      append_user "fig4_ssgsea_hallmark.input_rds" "$path"
+      append_user "fig4_monocle3.input_rds" "$path"
+      append_user "fig4_cell2location_sc_prep.obj_gr_rds" "$path"
+      ;;
+    ssgsea_rds|ssgsea) append_user "fig4_ssgsea_hallmark.input_rds" "$path" ;;
+    monocle3_rds|monocle3) append_user "fig4_monocle3.input_rds" "$path" ;;
+    c2l_sc_gc_rds|c2l_sc) append_user "fig4_cell2location_sc_prep.obj_gr_rds" "$path" ;;
+    c2l_sc_total_rds|c2l_sc_total|total_rds) append_user "fig4_cell2location_sc_prep.obj_total_rds" "$path" ;;
+    spatial_h5ad|c2l_spatial|spatial) append_user "fig4_cell2location_spatial_prep.input_h5ad" "$path" ;;
+    train_sc_h5ad|c2l_train_sc|train_sc) append_user "fig4_cell2location_train.single_cell.input_h5ad" "$path" ;;
+    train_spatial_h5ad|c2l_train_spatial|train_spatial) append_user "fig4_cell2location_train.spatial.input_h5ad" "$path" ;;
+    *) die "unknown input alias '$alias_name'. Use -h to see supported aliases." ;;
+  esac
+}
+
+apply_input_shortcuts(){
+  [[ "${#INPUT_SPECS[@]}" -gt 0 ]] || return 0
+  local spec alias path
   for spec in "${INPUT_SPECS[@]}"; do
     if [[ "$spec" == *=* ]]; then
-      alias_name="${spec%%=*}"
+      alias="${spec%%=*}"
       path="${spec#*=}"
-      [[ -n "$alias_name" && -n "$path" ]] || die "bad -i alias=path spec: '$spec'"
-      alias_input_override "$alias_name" "$path"
+      [[ -n "$alias" && -n "$path" ]] || die "bad -i alias=PATH spec: '$spec'"
+      apply_alias_input "$alias" "$path"
     else
-      path="$spec"
       if [[ "${#SELECTED_STEPS[@]}" -eq 1 ]]; then
-        set_primary_input_for_step "${SELECTED_STEPS[0]}" "$path"
-      elif all_steps_in_middle_gc_chain; then
-        for s in "${SELECTED_STEPS[@]}"; do
-          set_primary_input_for_step "$s" "$path"
-        done
+        set_primary_input_for_step "${SELECTED_STEPS[0]}" "$spec"
       else
-        die "plain '-i PATH' is ambiguous for steps: ${SELECTED_STEPS[*]}. Use named inputs like -i gc_result_rds=... or -i train_sc_h5ad=..."
+        local joined=","; joined="$(IFS=,; echo "${SELECTED_STEPS[*]}")"
+        if [[ "$joined" == "ssgsea,monocle3,c2l_sc" ]]; then
+          apply_alias_input gc_result_rds "$spec"
+        else
+          die "bare -i PATH is only supported for a single step, or exactly --only ssgsea,monocle3,c2l_sc. For complex cases use -i alias=PATH."
+        fi
       fi
     fi
   done
@@ -299,44 +299,15 @@ apply_input_specs(){
 
 COMBINED="$(discover_config)"
 parse_selected_steps
-
-if [[ -n "$OUT_BASE" ]]; then
-  OVERRIDES+=(
-    "fig4_gc_processing.out_dir=$OUT_BASE/gc_processing"
-    "fig4_gc_processing.out_round1_rds=$OUT_BASE/gc_processing/gc.round1.rds"
-    "fig4_gc_processing.out_final_rds=$OUT_BASE/gc_processing/obj_gr_newanno.rds"
-
-    "fig4_ssgsea_hallmark.input_rds=$OUT_BASE/gc_processing/obj_gr_newanno.rds"
-    "fig4_ssgsea_hallmark.out_dir=$OUT_BASE/ssgsea_hallmark"
-
-    "fig4_monocle3.input_rds=$OUT_BASE/gc_processing/obj_gr_newanno.rds"
-    "fig4_monocle3.out_dir=$OUT_BASE/monocle3"
-    "fig4_monocle3.out_cds_rds=$OUT_BASE/monocle3/gc.cds.rds"
-    "fig4_monocle3.out_obj_rds=$OUT_BASE/monocle3/gc.obj_with_pseudotime.rds"
-    "fig4_monocle3.out_pseudotime_csv=$OUT_BASE/monocle3/gc.pseudotime.csv"
-    "fig4_monocle3.out_plot_pdf=$OUT_BASE/monocle3/gc.monocle3_pseudotime_umap.pdf"
-
-    "fig4_cell2location_sc_prep.obj_gr_rds=$OUT_BASE/gc_processing/obj_gr_newanno.rds"
-    "fig4_cell2location_sc_prep.out_dir=$OUT_BASE/cell2location_sc_ref"
-    "fig4_cell2location_sc_prep.out_h5ad=$OUT_BASE/cell2location_sc_ref/somatic_1226.h5ad"
-    "fig4_cell2location_sc_prep.out_merged_rds=$OUT_BASE/cell2location_sc_ref/somatic_1226.merged_for_cell2location.rds"
-
-    "fig4_cell2location_spatial_prep.out_dir=$OUT_BASE/cell2location_spatial"
-
-    "fig4_cell2location_train.out_dir=$OUT_BASE/cell2location_train"
-    "fig4_cell2location_train.single_cell.input_h5ad=$OUT_BASE/cell2location_sc_ref/somatic_1226.h5ad"
-    "fig4_cell2location_train.spatial.input_h5ad=$OUT_BASE/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad"
-  )
-fi
-
-apply_input_specs
+apply_auto_out_overrides
+apply_input_shortcuts
 
 step_gc(){          run_step gc          fig4_gc_processing               R  "$SCRIPTS_DIR/fig4_gc_processing.R"; }
-step_ssgsea(){      run_step ssgsea      fig4_ssgsea_hallmark             R  "$SCRIPTS_DIR/fig4_ssgsea_hallmark.R"; }
-step_monocle3(){    run_step monocle3    fig4_monocle3                    R  "$SCRIPTS_DIR/fig4_monocle3.R"; }
-step_c2l_sc(){      run_step c2l_sc      fig4_cell2location_sc_prep       R  "$SCRIPTS_DIR/fig4_cell2location_sc_prep.R"; }
-step_c2l_spatial(){ run_step c2l_spatial fig4_cell2location_spatial_prep  PY "$SCRIPTS_DIR/fig4_cell2location_spatial_prep.py"; }
-step_c2l_train(){   run_step c2l_train   fig4_cell2location_train         PY "$SCRIPTS_DIR/fig4_cell2location_train.py"; }
+step_ssgsea(){      run_step ssgsea      fig4_ssgsea_hallmark            R  "$SCRIPTS_DIR/fig4_ssgsea_hallmark.R"; }
+step_monocle3(){    run_step monocle3    fig4_monocle3                   R  "$SCRIPTS_DIR/fig4_monocle3.R"; }
+step_c2l_sc(){      run_step c2l_sc      fig4_cell2location_sc_prep      R  "$SCRIPTS_DIR/fig4_cell2location_sc_prep.R"; }
+step_c2l_spatial(){ run_step c2l_spatial fig4_cell2location_spatial_prep PY "$SCRIPTS_DIR/fig4_cell2location_spatial_prep.py"; }
+step_c2l_train(){   run_step c2l_train   fig4_cell2location_train        PY "$SCRIPTS_DIR/fig4_cell2location_train.py"; }
 
 run_only(){
   local s="$1"
@@ -351,10 +322,8 @@ run_only(){
   esac
 }
 
-if [[ "$ONLY" == "all" || -z "$ONLY" ]]; then
-  step_gc; step_ssgsea; step_monocle3; step_c2l_sc; step_c2l_spatial; step_c2l_train
-else
-  for s in "${SELECTED_STEPS[@]}"; do run_only "$s"; done
-fi
+for s in "${SELECTED_STEPS[@]}"; do
+  run_only "$s"
+done
 
 echo "[OK] Fig4 finished."

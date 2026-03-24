@@ -25,6 +25,7 @@ import datetime as _dt
 import os
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -73,7 +74,7 @@ def _log(msg: str, fh):
 def _aggregate_by_gene_name(
     adata: ad.AnnData,
     gene_name_col: str,
-    drop_gene_names: list[str] | None,
+    drop_gene_names: Optional[List[str]],
     log_fh,
 ) -> ad.AnnData:
     """Aggregate duplicated genes by `gene_name_col` using sparse COO summation."""
@@ -143,7 +144,7 @@ def _add_qc_flags(adata: ad.AnnData):
     adata.var["hb"] = adata.var_names.str.upper().str.contains(r"^HB[AB]", regex=True)
 
 
-def _read_id_list(path: Path) -> list[str]:
+def _read_id_list(path: Path) -> List[str]:
     ids = []
     for line in path.read_text(encoding="utf-8").splitlines():
         s = line.strip()

@@ -207,8 +207,12 @@ def main():
     sc.pp.filter_cells(adata, min_genes=min_genes)
     sc.pp.filter_genes(adata, min_cells=min_cells)
 
-    # Re-sync counts layer after filtering
-    adata.layers["counts"] = adata.layers["counts"][adata.obs_names, adata.var_names]
+    # After AnnData in-place filtering, layers are already filtered consistently.
+    # Do not re-index sparse matrices with string obs/var names here.
+    if sparse.issparse(adata.layers["counts"]):
+        adata.layers["counts"] = adata.layers["counts"].copy()
+    else:
+        adata.layers["counts"] = np.array(adata.layers["counts"], copy=True)
 
     orig_qc_h5ad = out_dir / f"{prefix}.orig_qc_counts.h5ad"
     sc.write_h5ad(str(orig_qc_h5ad), adata)

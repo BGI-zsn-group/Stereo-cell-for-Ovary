@@ -158,13 +158,15 @@ def _round1_process(adata: ad.AnnData, cfg: dict, log_fh=None) -> ad.AnnData:
     if "highly_variable" in adata.var.columns:
         adata = adata[:, adata.var["highly_variable"].to_numpy()].copy()
 
-    s_genes = [g for g in _as_list(cfg.get("s_genes", NOTEBOOK_S_GENES)) if g in adata.var_names]
-    g2m_genes = [g for g in _as_list(cfg.get("g2m_genes", NOTEBOOK_G2M_GENES)) if g in adata.var_names]
+    # Notebook behavior: after HVG subsetting, score_genes_cell_cycle still has access to full genes via adata.raw.
+    gene_universe = adata.raw.var_names if getattr(adata, "raw", None) is not None else adata.var_names
+    s_genes = [g for g in _as_list(cfg.get("s_genes", NOTEBOOK_S_GENES)) if g in gene_universe]
+    g2m_genes = [g for g in _as_list(cfg.get("g2m_genes", NOTEBOOK_G2M_GENES)) if g in gene_universe]
     if len(s_genes) == 0 or len(g2m_genes) == 0:
-        raise SystemExit("ERROR: round1 cell-cycle genes matched 0 genes after HVG selection; this is not notebook-equivalent.")
-    sc.tl.score_genes_cell_cycle(adata, s_genes=s_genes, g2m_genes=g2m_genes, copy=False)
+        raise SystemExit("ERROR: round1 cell-cycle genes matched 0 genes in gene_universe (raw/var).")
+    sc.tl.score_genes_cell_cycle(adata, s_genes=s_genes, g2m_genes=g2m_genes, copy=False, use_raw=True if getattr(adata, "raw", None) is not None else None)
     sc.pp.regress_out(adata, ["S_score", "G2M_score"])
-    _log("[round1][cell-cycle] scored/regressed with {} S genes and {} G2M genes".format(len(s_genes), len(g2m_genes)), log_fh)
+    _log("[round1][cell-cycle] scored/regressed with {} S genes and {} G2M genes using {}".format(len(s_genes), len(g2m_genes), "raw" if getattr(adata, "raw", None) is not None else "var"), log_fh)
     _run_graph(adata, cfg, log_fh, prefix="[round1]")
     return adata
 

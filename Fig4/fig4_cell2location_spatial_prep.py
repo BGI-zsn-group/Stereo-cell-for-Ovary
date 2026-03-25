@@ -2,22 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 Fig4 spatial preprocessing for cell2location.
-Aligned to the user's notebook logic (ROI ignored, image loading ignored), Python 3.8 compatible.
+Notebook-aligned, Python 3.8 compatible.
 
-Notebook-aligned logic:
-1) read one adjusted .h5ad
-2) aggregate duplicated genes by `gene_name_col`
-3) QC metrics + filter_cells/filter_genes
-4) snapshot `adata_orig` after QC filtering but before normalization
-5) round1 on all cells:
-   normalize_total -> log1p -> raw copy -> HVG -> score/regress cell cycle -> scale -> PCA -> spatial neighbors -> neighbors -> UMAP -> leiden_10/leiden_15
-6) subset by round1 leiden_15 exclusion (and optional ROI cell list)
-7) round2 on subset:
-   adata_subset = adata_subset.raw.to_adata()   # back to round1 raw matrix
-   adata_subset.raw = adata_subset.copy()
-   HVG -> scale -> PCA -> spatial neighbors -> neighbors -> UMAP -> leiden_10/leiden_15
-   (no second normalize/log1p, no second cell-cycle scoring/regression)
-8) final c2l input is built from adata_orig[adata_subset.obs_names, :] with full genes + copied obs/var/obsm/uns
+Key alignment points:
+1) QC snapshot adata_orig is taken AFTER filter_cells/filter_genes and BEFORE normalize/log1p.
+2) Round1 uses notebook S/G2M gene lists by default and performs score_genes_cell_cycle + regress_out.
+3) Round2 follows the notebook exactly: raw.to_adata() -> HVG -> scale -> PCA -> neighbors -> UMAP -> leiden
+   (NO normalize_total/log1p, NO cell-cycle regression).
+4) Final full-count object is rebuilt from adata_orig[subset_cells, :] and copies obs/var/obsm/uns.
 """
 from __future__ import annotations
 
@@ -41,6 +33,23 @@ try:
     import squidpy as sq
 except Exception:
     sq = None
+
+
+NOTEBOOK_S_GENES = [
+    "Mcm5", "Pcna", "Tyms", "Fen1", "Mcm2", "Mcm4", "Rrm1", "Ung", "Gins2", "Mcm6",
+    "Cdca7", "Dtl", "Prim1", "Uhrf1", "Cenpu", "Hells", "Rfc2", "Rpa2", "Nasp", "Rad51ap1",
+    "Gmnn", "Wdr76", "Slbp", "Ccne2", "Ubr7", "Pold3", "Msh2", "Atad2", "Rad51", "Rrm2",
+    "Cdc45", "Cdc6", "Exo1", "Tipin", "Dscc1", "Blm", "Casp8ap2", "Usp1", "Clspn", "Pola1",
+    "Chaf1b", "Brip1", "E2f8"
+]
+NOTEBOOK_G2M_GENES = [
+    "Hmgb2", "Cdk1", "Nusap1", "Ube2c", "Birc5", "Tpx2", "Top2a", "Ndc80", "Cks2",
+    "Nuf2", "Cks1b", "Mki67", "Tmpo", "Cenpf", "Tacc3", "Smc4", "Ccnb2",
+    "Ckap2l", "Ckap2", "Aurkb", "Bub1", "Kif11", "Anp32e", "Tubb4b", "Gtse1", "Kif20b",
+    "Hjurp", "Cdca3", "Jpt1", "Cdc20", "Ttk", "Cdc25c", "Kif2c", "Rangap1", "Ncapd2",
+    "Dlgap5", "Cdca2", "Cdca8", "Ect2", "Kif23", "Hmmr", "Aurka", "Psrc1", "Anln",
+    "Lbr", "Ckap5", "Cenpe", "Ctcf", "Nek2", "G2e3", "Cbx5", "Cenpa"
+]
 
 
 def _now() -> str:
@@ -106,16 +115,15 @@ def _aggregate_by_gene_name(adata: ad.AnnData, gene_name_col: str, drop_gene_nam
             X_agg[:, i] = X[:, cols].sum(axis=1)
     X_agg = X_agg.tocsr()
 
-    new_var = pd.DataFrame(index=pd.Index(unique_genes.astype(str), name=None))
-    out = ad.AnnData(
+    adata_out = ad.AnnData(
         X=X_agg,
         obs=adata.obs.copy(),
-        var=new_var,
+        var=pd.DataFrame(index=pd.Index(unique_genes.astype(str), name=None)),
         obsm={k: (v.copy() if hasattr(v, "copy") else v) for k, v in adata.obsm.items()},
         uns=adata.uns.copy(),
     )
-    out.var_names = out.var.index.astype(str)
-    return out
+    adata_out.var_names = adata_out.var.index.astype(str)
+    return adata_out
 
 
 def _ensure_counts_layer(adata: ad.AnnData):
@@ -123,15 +131,9 @@ def _ensure_counts_layer(adata: ad.AnnData):
     adata.layers["counts"] = X
 
 
-def _write_h5ad(adata: ad.AnnData, path: Path):
-    _ensure_dir(path.parent)
-    adata.write_h5ad(str(path))
-
-
-def _run_neighbors_umap_leiden(adata: ad.AnnData, cfg: dict, log_fh=None, prefix: str = ""):
+def _run_graph(adata: ad.AnnData, cfg: dict, log_fh=None, prefix: str = ""):
     sc.pp.scale(adata, max_value=float(cfg.get("scale_max_value", 10)))
     sc.tl.pca(adata, svd_solver=str(cfg.get("pca_solver", "arpack")))
-
     if sq is not None and "spatial" in adata.obsm.keys() and bool(cfg.get("do_spatial_neighbors", True)):
         try:
             sq.gr.spatial_neighbors(
@@ -142,56 +144,37 @@ def _run_neighbors_umap_leiden(adata: ad.AnnData, cfg: dict, log_fh=None, prefix
             _log("{}[graph] built squidpy spatial neighbors".format(prefix), log_fh)
         except Exception as e:
             _log("{}[warn] squidpy spatial_neighbors failed: {}".format(prefix, e), log_fh)
-
     sc.pp.neighbors(adata, n_neighbors=int(cfg.get("n_neighbors", 20)), n_pcs=int(cfg.get("n_pcs", 30)))
     sc.tl.umap(adata)
     sc.tl.leiden(adata, resolution=float(cfg.get("leiden_resolution_10", 1.0)), key_added=str(cfg.get("leiden_key_10", "leiden_10")))
     sc.tl.leiden(adata, resolution=float(cfg.get("leiden_resolution_15", 1.5)), key_added=str(cfg.get("leiden_key_15", "leiden_15")))
 
 
-def _score_and_regress_cell_cycle(adata: ad.AnnData, cfg: dict, log_fh=None, prefix: str = ""):
-    s_genes = [g for g in _as_list(cfg.get("s_genes")) if g in adata.var_names]
-    g2m_genes = [g for g in _as_list(cfg.get("g2m_genes")) if g in adata.var_names]
-    if len(s_genes) == 0 or len(g2m_genes) == 0:
-        _log("{}[cell-cycle] skip: no matched S/G2M genes".format(prefix), log_fh)
-        return
-    sc.tl.score_genes_cell_cycle(adata, s_genes=s_genes, g2m_genes=g2m_genes, copy=False)
-    sc.pp.regress_out(adata, ["S_score", "G2M_score"])
-    _log("{}[cell-cycle] scored/regressed with {} S genes and {} G2M genes".format(prefix, len(s_genes), len(g2m_genes)), log_fh)
-
-
 def _round1_process(adata: ad.AnnData, cfg: dict, log_fh=None) -> ad.AnnData:
     sc.pp.normalize_total(adata, target_sum=float(cfg.get("normalize_target_sum", 1e4)))
     sc.pp.log1p(adata)
     adata.raw = adata.copy()
-    sc.pp.highly_variable_genes(
-        adata,
-        flavor=str(cfg.get("hvg_flavor", "seurat_v3")),
-        n_top_genes=int(cfg.get("hvg_n_top_genes", 2000)),
-    )
+    sc.pp.highly_variable_genes(adata, flavor=str(cfg.get("hvg_flavor", "seurat_v3")), n_top_genes=int(cfg.get("hvg_n_top_genes", 2000)))
     if "highly_variable" in adata.var.columns:
         adata = adata[:, adata.var["highly_variable"].to_numpy()].copy()
-    if bool(cfg.get("do_cell_cycle", True)):
-        _score_and_regress_cell_cycle(adata, cfg, log_fh, prefix="[round1]")
-    _run_neighbors_umap_leiden(adata, cfg, log_fh, prefix="[round1]")
+
+    s_genes = [g for g in _as_list(cfg.get("s_genes", NOTEBOOK_S_GENES)) if g in adata.var_names]
+    g2m_genes = [g for g in _as_list(cfg.get("g2m_genes", NOTEBOOK_G2M_GENES)) if g in adata.var_names]
+    if len(s_genes) == 0 or len(g2m_genes) == 0:
+        raise SystemExit("ERROR: round1 cell-cycle genes matched 0 genes after HVG selection; this is not notebook-equivalent.")
+    sc.tl.score_genes_cell_cycle(adata, s_genes=s_genes, g2m_genes=g2m_genes, copy=False)
+    sc.pp.regress_out(adata, ["S_score", "G2M_score"])
+    _log("[round1][cell-cycle] scored/regressed with {} S genes and {} G2M genes".format(len(s_genes), len(g2m_genes)), log_fh)
+    _run_graph(adata, cfg, log_fh, prefix="[round1]")
     return adata
 
 
 def _round2_process_notebook(adata_subset: ad.AnnData, cfg: dict, log_fh=None) -> ad.AnnData:
-    if adata_subset.raw is None:
-        raise SystemExit("ERROR: adata_subset.raw is None; notebook-style round2 requires raw.to_adata()")
-    adata_subset = adata_subset.raw.to_adata()
-    _log("[subset-round2] returned subset to raw counts before subset reprocessing", log_fh)
-    adata_subset.raw = adata_subset.copy()
-    sc.pp.highly_variable_genes(
-        adata_subset,
-        flavor=str(cfg.get("subset_hvg_flavor", cfg.get("hvg_flavor", "seurat_v3"))),
-        n_top_genes=int(cfg.get("subset_hvg_n_top_genes", cfg.get("hvg_n_top_genes", 2000))),
-    )
+    # Notebook round2 does NOT normalize/log1p and does NOT run cell-cycle regression again.
+    sc.pp.highly_variable_genes(adata_subset, flavor=str(cfg.get("hvg_flavor", "seurat_v3")), n_top_genes=int(cfg.get("hvg_n_top_genes", 2000)))
     if "highly_variable" in adata_subset.var.columns:
         adata_subset = adata_subset[:, adata_subset.var["highly_variable"].to_numpy()].copy()
-    # Notebook round2 does NOT normalize/log1p again and does NOT do cell-cycle regress again.
-    _run_neighbors_umap_leiden(adata_subset, cfg, log_fh, prefix="[round2]")
+    _run_graph(adata_subset, cfg, log_fh, prefix="[round2]")
     return adata_subset
 
 
@@ -230,24 +213,19 @@ def main():
     adata.var["ribo"] = adata.var_names.str.upper().str.startswith(("RPS", "RPL"))
     adata.var["hb"] = adata.var_names.str.upper().str.contains("^HB[AB]", regex=True)
     sc.pp.calculate_qc_metrics(adata, qc_vars=["mt", "ribo", "hb"], inplace=True, log1p=True)
-
-    min_genes = int(cfg.get("min_genes", 100))
-    min_cells = int(cfg.get("min_cells", 3))
-    _log("[qc] filter_cells min_genes={}; filter_genes min_cells={}".format(min_genes, min_cells), log_fh)
-    sc.pp.filter_cells(adata, min_genes=min_genes)
-    sc.pp.filter_genes(adata, min_cells=min_cells)
+    sc.pp.filter_cells(adata, min_genes=int(cfg.get("min_genes", 100)))
+    sc.pp.filter_genes(adata, min_cells=int(cfg.get("min_cells", 3)))
+    _log("[qc] filter_cells min_genes={}; filter_genes min_cells={}".format(int(cfg.get("min_genes", 100)), int(cfg.get("min_cells", 3))), log_fh)
 
     adata_orig = adata.copy()
     _ensure_counts_layer(adata_orig)
-    orig_qc_h5ad_cfg = cfg.get("out_orig_qc_h5ad", None)
-    orig_qc_h5ad = Path(orig_qc_h5ad_cfg) if orig_qc_h5ad_cfg not in (None, "") else (out_dir / (prefix + ".orig_qc_counts.h5ad"))
-    _write_h5ad(adata_orig, orig_qc_h5ad)
+    orig_qc_h5ad = out_dir / (prefix + ".orig_qc_counts.h5ad")
+    adata_orig.write_h5ad(str(orig_qc_h5ad))
     _log("[save] orig_qc_h5ad={} n_obs={} n_vars={}".format(orig_qc_h5ad, adata_orig.n_obs, adata_orig.n_vars), log_fh)
 
     adata = _round1_process(adata, cfg, log_fh)
-    processed_h5ad_cfg = cfg.get("out_processed_h5ad", None)
-    processed_h5ad = Path(processed_h5ad_cfg) if processed_h5ad_cfg not in (None, "") else (out_dir / (prefix + ".adjusted_processed.h5ad"))
-    _write_h5ad(adata, processed_h5ad)
+    processed_h5ad = out_dir / (prefix + ".adjusted_processed.h5ad")
+    adata.write_h5ad(str(processed_h5ad))
     _log("[save] processed_h5ad={} n_obs={} n_vars={}".format(processed_h5ad, adata.n_obs, adata.n_vars), log_fh)
 
     subset_cells = list(adata.obs_names)
@@ -266,58 +244,32 @@ def main():
         _log("[subset-round1] leiden_key={} exclude={} -> {} cells".format(leiden_key, sorted(exclude_clusters), len(subset_cells)), log_fh)
     adata_subset = adata[subset_cells, :].copy()
 
-    subset_raw_h5ad_cfg = cfg.get("out_subset_raw_h5ad", None)
-    subset_raw_h5ad = Path(subset_raw_h5ad_cfg) if subset_raw_h5ad_cfg not in (None, "") else (out_dir / (prefix + ".adjusted_subset_raw.h5ad"))
+    if adata_subset.raw is None:
+        raise SystemExit("ERROR: adata_subset.raw is None; cannot run notebook-style subset raw->to_adata()")
+    adata_subset = adata_subset.raw.to_adata()
+    _log("[subset-round2] returned subset to raw counts before subset reprocessing", log_fh)
+    adata_subset.raw = adata_subset.copy()
+    subset_raw_h5ad = out_dir / (prefix + ".adjusted_subset_raw.h5ad")
+    adata_subset.write_h5ad(str(subset_raw_h5ad))
+    _log("[save] subset_raw_h5ad={} n_obs={} n_vars={}".format(subset_raw_h5ad, adata_subset.n_obs, adata_subset.n_vars), log_fh)
 
-    if bool(cfg.get("subset_reprocess", True)):
-        adata_subset = _round2_process_notebook(adata_subset, cfg, log_fh)
-        # Save raw-count snapshot after raw.to_adata and before HVG? notebook saves the raw subset before HVG.
-        # To preserve notebook behavior, reconstruct and save that snapshot separately.
-        # We can't recover the pre-HVG round2 snapshot from adata_subset now, so create from round1 subset raw.
-        tmp_subset_raw = adata[subset_cells, :].copy().raw.to_adata()
-        tmp_subset_raw.raw = tmp_subset_raw.copy()
-        _write_h5ad(tmp_subset_raw, subset_raw_h5ad)
-        _log("[save] subset_raw_h5ad={} n_obs={} n_vars={}".format(subset_raw_h5ad, tmp_subset_raw.n_obs, tmp_subset_raw.n_vars), log_fh)
-    else:
-        _write_h5ad(adata_subset, subset_raw_h5ad)
-        _log("[save] subset_raw_h5ad={} n_obs={} n_vars={}".format(subset_raw_h5ad, adata_subset.n_obs, adata_subset.n_vars), log_fh)
-
-    subset_processed_h5ad_cfg = cfg.get("out_subset_processed_h5ad", None)
-    subset_processed_h5ad = Path(subset_processed_h5ad_cfg) if subset_processed_h5ad_cfg not in (None, "") else (out_dir / (prefix + ".adjusted_processed_subset.h5ad"))
-    _write_h5ad(adata_subset, subset_processed_h5ad)
+    adata_subset = _round2_process_notebook(adata_subset, cfg, log_fh)
+    subset_processed_h5ad = out_dir / (prefix + ".adjusted_processed_subset.h5ad")
+    adata_subset.write_h5ad(str(subset_processed_h5ad))
     _log("[save] subset_processed_h5ad={} n_obs={} n_vars={}".format(subset_processed_h5ad, adata_subset.n_obs, adata_subset.n_vars), log_fh)
 
     subset_cells_final = list(adata_subset.obs_names)
     obs_subset = adata_orig.obs.loc[subset_cells_final].copy()
     var_full = adata_orig.var.copy()
-    X_full = adata_orig[subset_cells_final, :].X.copy()
-
-    obsm_subset = {}
-    for key in adata_orig.obsm.keys():
-        arr = adata_orig.obsm[key]
-        idx = adata_orig.obs_names.get_indexer_for(subset_cells_final)
-        if hasattr(arr, "__getitem__"):
-            piece = arr[idx]
-            obsm_subset[key] = piece.copy() if hasattr(piece, "copy") else piece
-
-    adata_counts = ad.AnnData(
-        X=X_full,
-        obs=obs_subset,
-        var=var_full,
-        obsm=obsm_subset,
-        uns=adata_orig.uns.copy(),
-    )
+    X_full = adata_orig[subset_cells_final, :].layers["counts"].copy()
+    obsm_subset = {key: adata_orig.obsm[key][adata_orig.obs_names.get_indexer_for(subset_cells_final)] for key in adata_orig.obsm.keys()}
+    adata_counts = ad.AnnData(X=X_full, obs=obs_subset, var=var_full, obsm=obsm_subset, uns=adata_orig.uns.copy())
     _ensure_counts_layer(adata_counts)
     if "orig.ident" not in adata_counts.obs.columns:
         adata_counts.obs["orig.ident"] = prefix
-
-    cell2loc_h5ad_cfg = cfg.get("out_cell2location_h5ad", None)
-    cell2loc_h5ad = Path(cell2loc_h5ad_cfg) if cell2loc_h5ad_cfg not in (None, "") else (out_dir / (prefix + ".cell2location_spatial_counts.h5ad"))
-    _write_h5ad(adata_counts, cell2loc_h5ad)
+    cell2loc_h5ad = out_dir / (prefix + ".cell2location_spatial_counts.h5ad")
+    adata_counts.write_h5ad(str(cell2loc_h5ad))
     _log("[save] cell2location_h5ad={} n_obs={} n_vars={}".format(cell2loc_h5ad, adata_counts.n_obs, adata_counts.n_vars), log_fh)
-
-    with open(out_dir / "params_used_fig4_cell2location_spatial.yaml", "w", encoding="utf-8") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
     _log("[done] spatial preprocessing finished", log_fh)
     log_fh.close()
 

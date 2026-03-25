@@ -392,10 +392,6 @@ modules:
     leiden_resolution_15: 1.5
     leiden_key_10: leiden_10
     leiden_key_15: leiden_15
-    out_orig_qc_h5ad: results/Fig4/cell2location_spatial/B04372C211.orig_qc_counts.h5ad
-    out_processed_h5ad: results/Fig4/cell2location_spatial/B04372C211.adjusted_processed.h5ad
-    out_subset_processed_h5ad: results/Fig4/cell2location_spatial/B04372C211.adjusted_processed_subset.h5ad
-    out_cell2location_h5ad: results/Fig4/cell2location_spatial/B04372C211.cell2location_spatial_counts.h5ad
   fig4_cell2location_train:
     seed: 0
     out_dir: results/Fig4/cell2location_train

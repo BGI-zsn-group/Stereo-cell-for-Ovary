@@ -391,7 +391,6 @@ modules:
     leiden_key_10: leiden_10
     leiden_key_15: leiden_15
     subset_reprocess: true
-    out_subset_raw_h5ad: null
     subset_reprocess_params:
       normalize_target_sum: 10000.0
       hvg_flavor: seurat_v3

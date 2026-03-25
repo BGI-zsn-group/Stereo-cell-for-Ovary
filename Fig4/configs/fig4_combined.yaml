@@ -1,8 +1,12 @@
-# Updated for the user's new GC workflow.
-# Key downstream changes:
-# - GC final labels are now: GC_Progenitor / GC_Preantral / GC_Mitotic / GC_Cumulus / GC_Antral_Mural / GC_Atretic
-# - c2l_sc no longer needs cluster->celltype remapping for obj_gr if the GC output already contains the final celltype column
-# - monocle3 roots by celltype == GC_Progenitor instead of a hard-coded cluster ID
+# Final integrated Fig4 config
+# Integrated parts:
+# 1) New GC workflow and final labels
+# 2) monocle3 rooting by celltype == GC_Progenitor
+# 3) ssgsea order aligned to the new GC labels
+# 4) c2l_sc uses final celltype from obj_gr and does not remap old GC clusters
+# 5) c2l_spatial uses notebook-aligned dual-input logic:
+#    - input_h5ad for QC/clustering/subsetting
+#    - input_h5ad_orig for recovering full-count raw matrix for cell2location
 
 figure: fig4
 modules:
@@ -13,12 +17,12 @@ modules:
     celltype_col: celltype
     pre_subset_cluster_to_celltype:
       GC_Column:
-      - '9'
+        - '9'
     subset_celltypes:
-    - GC_Antral_Mural
-    - GC_Preantral
-    - GC_Atretic
-    - GC_Column
+      - GC_Antral_Mural
+      - GC_Preantral
+      - GC_Atretic
+      - GC_Column
     exclude_regex: ^(Rp|mt)
     nfeatures_round1: 2000
     manual_exclude_genes_round1: []
@@ -33,83 +37,83 @@ modules:
       lambda: null
       sigma: null
     exclude_clusters_round1:
-    - '6'
-    - '7'
-    - '15'
-    - '16'
+      - '6'
+      - '7'
+      - '15'
+      - '16'
     pipeline_stage2:
       dims: 40
       cluster_resolution: 1.0
     stage2_label_levels:
-    - GC_Progenitor
-    - GC_Preantral
-    - GC_Cumulus
-    - GC_Antral_Mural_Inhba
-    - GC_Antral_Mural_Id2
-    - GC_Antral_Mural_Slc38a5
-    - GC_Atretic
+      - GC_Progenitor
+      - GC_Preantral
+      - GC_Cumulus
+      - GC_Antral_Mural_Inhba
+      - GC_Antral_Mural_Id2
+      - GC_Antral_Mural_Slc38a5
+      - GC_Atretic
     stage2_cluster_to_celltype:
       GC_Progenitor:
-      - '11'
+        - '11'
       GC_Preantral:
-      - '17'
-      - '5'
-      - '2'
-      - '0'
-      - '14'
+        - '17'
+        - '5'
+        - '2'
+        - '0'
+        - '14'
       GC_Cumulus:
-      - '18'
-      - '10'
-      - '9'
-      - '12'
+        - '18'
+        - '10'
+        - '9'
+        - '12'
       GC_Antral_Mural_Inhba:
-      - '8'
+        - '8'
       GC_Antral_Mural_Id2:
-      - '4'
+        - '4'
       GC_Antral_Mural_Slc38a5:
-      - '1'
+        - '1'
       GC_Atretic:
-      - '3'
-      - '13'
+        - '3'
+        - '13'
     pipeline_final:
       harmony_group: orig.ident
       pca_npcs: 50
       dims: 30
       vars_to_regress:
-      - S.Score
-      - G2M.Score
+        - S.Score
+        - G2M.Score
       cluster_resolution: 1.0
       theta: null
       lambda: null
       sigma: null
     final_label_levels:
-    - GC_Progenitor
-    - GC_Preantral
-    - GC_Mitotic
-    - GC_Cumulus
-    - GC_Antral_Mural
-    - GC_Atretic
+      - GC_Progenitor
+      - GC_Preantral
+      - GC_Mitotic
+      - GC_Cumulus
+      - GC_Antral_Mural
+      - GC_Atretic
     final_cluster_to_celltype:
       GC_Progenitor:
-      - '7'
+        - '7'
       GC_Preantral:
-      - '11'
-      - '0'
-      - '1'
-      - '8'
+        - '11'
+        - '0'
+        - '1'
+        - '8'
       GC_Mitotic:
-      - '9'
+        - '9'
       GC_Cumulus:
-      - '5'
-      - '10'
+        - '5'
+        - '10'
       GC_Antral_Mural:
-      - '6'
-      - '3'
+        - '6'
+        - '3'
       GC_Atretic:
-      - '2'
-      - '4'
+        - '2'
+        - '4'
     exclude_clusters_after_final_map:
-    - '8'
+      - '8'
     out_round1_stage1_rds: results/Fig4/gc_processing/gc.round1_stage1.rds
     out_round1_rds: results/Fig4/gc_processing/gc.round1.rds
     out_stage2_rds: results/Fig4/gc_processing/gc.stage2.rds
@@ -144,39 +148,39 @@ modules:
     max_sz: null
     parallel_sz: 10
     celltype_order:
-    - GC_Progenitor
-    - GC_Preantral
-    - GC_Mitotic
-    - GC_Cumulus
-    - GC_Antral_Mural
-    - GC_Atretic
+      - GC_Progenitor
+      - GC_Preantral
+      - GC_Mitotic
+      - GC_Cumulus
+      - GC_Antral_Mural
+      - GC_Atretic
     keep_pathways:
-    - E2F_TARGETS
-    - G2M_CHECKPOINT
-    - MITOTIC_SPINDLE
-    - MYC_TARGETS_V1
-    - MYC_TARGETS_V2
-    - DNA_REPAIR
-    - WNT_BETA_CATENIN_SIGNALING
-    - NOTCH_SIGNALING
-    - HEDGEHOG_SIGNALING
-    - TGF_BETA_SIGNALING
-    - ANGIOGENESIS
-    - OXIDATIVE_PHOSPHORYLATION
-    - GLYCOLYSIS
-    - FATTY_ACID_METABOLISM
-    - CHOLESTEROL_HOMEOSTASIS
-    - PEROXISOME
-    - MTORC1_SIGNALING
-    - PI3K_AKT_MTOR_SIGNALING
-    - P53_PATHWAY
-    - HYPOXIA
-    - REACTIVE_OXYGEN_SPECIES_PATHWAY
-    - UNFOLDED_PROTEIN_RESPONSE
-    - APOPTOSIS
-    - EPITHELIAL_MESENCHYMAL_TRANSITION
-    - TNFA_SIGNALING_VIA_NFKB
-    - IL6_JAK_STAT3_SIGNALING
+      - E2F_TARGETS
+      - G2M_CHECKPOINT
+      - MITOTIC_SPINDLE
+      - MYC_TARGETS_V1
+      - MYC_TARGETS_V2
+      - DNA_REPAIR
+      - WNT_BETA_CATENIN_SIGNALING
+      - NOTCH_SIGNALING
+      - HEDGEHOG_SIGNALING
+      - TGF_BETA_SIGNALING
+      - ANGIOGENESIS
+      - OXIDATIVE_PHOSPHORYLATION
+      - GLYCOLYSIS
+      - FATTY_ACID_METABOLISM
+      - CHOLESTEROL_HOMEOSTASIS
+      - PEROXISOME
+      - MTORC1_SIGNALING
+      - PI3K_AKT_MTOR_SIGNALING
+      - P53_PATHWAY
+      - HYPOXIA
+      - REACTIVE_OXYGEN_SPECIES_PATHWAY
+      - UNFOLDED_PROTEIN_RESPONSE
+      - APOPTOSIS
+      - EPITHELIAL_MESENCHYMAL_TRANSITION
+      - TNFA_SIGNALING_VIA_NFKB
+      - IL6_JAK_STAT3_SIGNALING
 
   fig4_cell2location_sc_prep:
     obj_gr_rds: results/Fig4/gc_processing/obj_gr_newanno.rds
@@ -185,10 +189,10 @@ modules:
     sample_col: sample
     celltype_col_total: celltype
     exclude_celltypes_in_total:
-    - GC_Atretic
-    - GC_Preantral
-    - GC_Antral_Mural
-    - GC_Column
+      - GC_Atretic
+      - GC_Preantral
+      - GC_Antral_Mural
+      - GC_Column
     gc_celltype_levels: null
     gc_cluster_to_celltype: null
     out_dir: results/Fig4/cell2location_sc_ref
@@ -205,7 +209,7 @@ modules:
     spatial_obsm_key: spatial
     gene_name_col: real_gene_name
     drop_gene_names:
-    - a
+      - a
     min_genes: 100
     min_cells: 3
     do_processing: true
@@ -216,116 +220,116 @@ modules:
     n_pcs: 30
     do_cell_cycle: true
     s_genes:
-    - Mcm5
-    - Pcna
-    - Tyms
-    - Fen1
-    - Mcm2
-    - Mcm4
-    - Rrm1
-    - Ung
-    - Gins2
-    - Mcm6
-    - Cdca7
-    - Dtl
-    - Prim1
-    - Uhrf1
-    - Cenpu
-    - Hells
-    - Rfc2
-    - Rpa2
-    - Nasp
-    - Rad51ap1
-    - Gmnn
-    - Wdr76
-    - Slbp
-    - Ccne2
-    - Ubr7
-    - Pold3
-    - Msh2
-    - Atad2
-    - Rad51
-    - Rrm2
-    - Cdc45
-    - Cdc6
-    - Exo1
-    - Tipin
-    - Dscc1
-    - Blm
-    - Casp8ap2
-    - Usp1
-    - Clspn
-    - Pola1
-    - Chaf1b
-    - Brip1
-    - E2f8
+      - Mcm5
+      - Pcna
+      - Tyms
+      - Fen1
+      - Mcm2
+      - Mcm4
+      - Rrm1
+      - Ung
+      - Gins2
+      - Mcm6
+      - Cdca7
+      - Dtl
+      - Prim1
+      - Uhrf1
+      - Cenpu
+      - Hells
+      - Rfc2
+      - Rpa2
+      - Nasp
+      - Rad51ap1
+      - Gmnn
+      - Wdr76
+      - Slbp
+      - Ccne2
+      - Ubr7
+      - Pold3
+      - Msh2
+      - Atad2
+      - Rad51
+      - Rrm2
+      - Cdc45
+      - Cdc6
+      - Exo1
+      - Tipin
+      - Dscc1
+      - Blm
+      - Casp8ap2
+      - Usp1
+      - Clspn
+      - Pola1
+      - Chaf1b
+      - Brip1
+      - E2f8
     g2m_genes:
-    - Hmgb2
-    - Cdk1
-    - Nusap1
-    - Ube2c
-    - Birc5
-    - Tpx2
-    - Top2a
-    - Ndc80
-    - Cks2
-    - Nuf2
-    - Cks1b
-    - Mki67
-    - Tmpo
-    - Cenpf
-    - Tacc3
-    - Smc4
-    - Ccnb2
-    - Ckap2l
-    - Ckap2
-    - Aurkb
-    - Bub1
-    - Kif11
-    - Anp32e
-    - Tubb4b
-    - Gtse1
-    - Kif20b
-    - Hjurp
-    - Cdca3
-    - Jpt1
-    - Cdc20
-    - Ttk
-    - Cdc25c
-    - Kif2c
-    - Rangap1
-    - Ncapd2
-    - Dlgap5
-    - Cdca2
-    - Cdca8
-    - Ect2
-    - Kif23
-    - Hmmr
-    - Aurka
-    - Psrc1
-    - Anln
-    - Lbr
-    - Ckap5
-    - Cenpe
-    - Ctcf
-    - Nek2
-    - G2e3
-    - Cbx5
-    - Cenpa
+      - Hmgb2
+      - Cdk1
+      - Nusap1
+      - Ube2c
+      - Birc5
+      - Tpx2
+      - Top2a
+      - Ndc80
+      - Cks2
+      - Nuf2
+      - Cks1b
+      - Mki67
+      - Tmpo
+      - Cenpf
+      - Tacc3
+      - Smc4
+      - Ccnb2
+      - Ckap2l
+      - Ckap2
+      - Aurkb
+      - Bub1
+      - Kif11
+      - Anp32e
+      - Tubb4b
+      - Gtse1
+      - Kif20b
+      - Hjurp
+      - Cdca3
+      - Jpt1
+      - Cdc20
+      - Ttk
+      - Cdc25c
+      - Kif2c
+      - Rangap1
+      - Ncapd2
+      - Dlgap5
+      - Cdca2
+      - Cdca8
+      - Ect2
+      - Kif23
+      - Hmmr
+      - Aurka
+      - Psrc1
+      - Anln
+      - Lbr
+      - Ckap5
+      - Cenpe
+      - Ctcf
+      - Nek2
+      - G2e3
+      - Cbx5
+      - Cenpa
     leiden_resolutions:
       leiden_10: 1.0
       leiden_15: 1.5
     subset:
       leiden_key: leiden_15
       exclude_clusters:
-      - '14'
-      - '8'
-      - '0'
-      - '10'
-      - '4'
-      - '13'
-      - '11'
-      - '17'
+        - '14'
+        - '8'
+        - '0'
+        - '10'
+        - '4'
+        - '13'
+        - '11'
+        - '17'
     roi:
       cell_ids_txt: ''
     out_dir: results/Fig4/cell2location_spatial

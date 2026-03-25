@@ -392,10 +392,8 @@ modules:
     leiden_key_15: leiden_15
     subset_reprocess: true
     subset_reprocess_params:
-      normalize_target_sum: 10000.0
       hvg_flavor: seurat_v3
       hvg_n_top_genes: 2000
-      do_cell_cycle: false
       scale_max_value: 10
       n_neighbors: 20
       n_pcs: 30
@@ -403,6 +401,9 @@ modules:
       leiden_resolution_15: 1.5
       leiden_key_10: leiden_10
       leiden_key_15: leiden_15
+      do_cell_cycle: false
+      normalize_target_sum: null
+    drop_gene_names: []
   fig4_cell2location_train:
     seed: 0
     out_dir: results/Fig4/cell2location_train

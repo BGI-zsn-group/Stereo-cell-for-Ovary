@@ -261,8 +261,6 @@ modules:
     input_h5ad: data/Fig4/spatial/B04372C211.adjusted.cellbin.h5ad
     spatial_obsm_key: spatial
     gene_name_col: real_gene_name
-    drop_gene_names:
-    - a
     min_genes: 100
     min_cells: 3
     do_processing: true
@@ -392,6 +390,20 @@ modules:
     leiden_resolution_15: 1.5
     leiden_key_10: leiden_10
     leiden_key_15: leiden_15
+    subset_reprocess: true
+    out_subset_raw_h5ad: null
+    subset_reprocess_params:
+      normalize_target_sum: 10000.0
+      hvg_flavor: seurat_v3
+      hvg_n_top_genes: 2000
+      do_cell_cycle: false
+      scale_max_value: 10
+      n_neighbors: 20
+      n_pcs: 30
+      leiden_resolution_10: 1.0
+      leiden_resolution_15: 1.5
+      leiden_key_10: leiden_10
+      leiden_key_15: leiden_15
   fig4_cell2location_train:
     seed: 0
     out_dir: results/Fig4/cell2location_train

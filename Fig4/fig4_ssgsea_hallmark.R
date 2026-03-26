@@ -2,8 +2,8 @@
 # Fig4: Hallmark ssGSEA on GC celltype-average expression (standalone module)
 #
 # This script:
-#   1) Loads a Seurat object (.rds) that contains GC cells with a `celltype` column.
-#   2) Computes average expression per group (default: group_by = "celltype") using log-normalized data.
+#   1) Loads a Seurat object (.rds) that contains GC cells with a grouping column (default: `celltype1`, configurable).
+#   2) Computes average expression per group (default: group_by = "celltype1") using log-normalized data.
 #   3) Runs GSVA::gsva(method = "ssgsea") using MSigDB Hallmark gene sets for mouse.
 #   4) Keeps a curated subset of Hallmark pathways (default list embedded; configurable).
 #   5) Reorders columns by a desired celltype order and writes matrix + heatmap.
@@ -80,7 +80,7 @@ input_rds <- cfg$input_rds %||% stop("Missing config: input_rds", call. = FALSE)
 out_dir   <- cfg$out_dir %||% "results/Fig4/ssgsea_hallmark"
 prefix    <- cfg$prefix %||% "gc"
 assay     <- cfg$assay %||% "RNA"
-group_by  <- cfg$group_by %||% "celltype"
+group_by  <- cfg$group_by %||% "celltype1"
 slot_use  <- cfg$slot %||% "data"
 
 species   <- cfg$species %||% "Mus musculus"
@@ -189,18 +189,19 @@ default_keep <- c(
 )
 
 keep <- keep_pathways %||% default_keep
-keep_in <- intersect(keep, rownames(gsva_res))
+# preserve notebook pathway order instead of intersect()'s default ordering
+keep_in <- keep[keep %in% rownames(gsva_res)]
 miss <- setdiff(keep, rownames(gsva_res))
 if (length(miss) > 0) cat("[Warn] pathways not found:", paste(miss, collapse = ", "), "\n")
 
 mat_sel <- gsva_res[keep_in, , drop = FALSE]
 if (nrow(mat_sel) == 0) stop("No selected Hallmark pathways remain after filtering.", call. = FALSE)
 
-# Reorder columns if requested
+# Reorder columns with notebook-style fixed order
 if (!is.null(celltype_order)) {
   miss_ct <- setdiff(celltype_order, colnames(mat_sel))
   if (length(miss_ct) > 0) cat("[Warn] requested celltypes not found:", paste(miss_ct, collapse = ", "), "\n")
-  celltype_order <- intersect(celltype_order, colnames(mat_sel))
+  celltype_order <- celltype_order[celltype_order %in% colnames(mat_sel)]
   if (length(celltype_order) > 0) {
     mat_sel <- mat_sel[, celltype_order, drop = FALSE]
   }
@@ -214,10 +215,20 @@ sel_rds <- file.path(out_dir, paste0(prefix, ".hallmark_ssgsea.selected.rds"))
 saveRDS(mat_sel, sel_rds)
 cat("[Info] wrote:", sel_rds, "\n")
 
-# Heatmap
+# Heatmap: align to notebook behavior
 pdf_path <- file.path(out_dir, paste0(prefix, ".hallmark_ssgsea.selected.pdf"))
-pdf(pdf_path, width = 9, height = max(4, 0.25 * nrow(mat_sel) + 2))
-pheatmap::pheatmap(mat_sel)
+pdf(pdf_path, width = 7, height = 6)
+pheatmap::pheatmap(
+  mat_sel,
+  cluster_rows = TRUE,
+  cluster_cols = FALSE,
+  scale = "row",
+  fontsize = 10,
+  show_colnames = FALSE,
+  show_rownames = TRUE,
+  border_color = "#D3D3D3",
+  main = paste0("Hallmark (Core n=", nrow(mat_sel), ")")
+)
 dev.off()
 cat("[Info] wrote:", pdf_path, "\n")
 

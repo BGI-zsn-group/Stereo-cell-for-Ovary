@@ -87,6 +87,26 @@ def _read_id_list(path: Path) -> List[str]:
         return [line.strip() for line in f if line.strip()]
 
 
+
+def _resolve_roi_path(cell_ids_txt):
+    p = Path(cell_ids_txt)
+    candidates = []
+    if p.is_absolute():
+        candidates.append(p)
+    else:
+        candidates.extend([
+            p,
+            Path.cwd() / p,
+            Path.cwd() / "data" / "Fig4" / p.name,
+            Path.cwd() / "data" / "Fig4" / "spatial" / p.name,
+        ])
+    for c in candidates:
+        if c.exists():
+            return c.resolve()
+    raise FileNotFoundError(
+        f"ROI cell_ids_txt not found: {cell_ids_txt}. Tried: "
+        + ", ".join(str(x) for x in candidates)
+    )
 def _aggregate_by_gene_name(adata: ad.AnnData, gene_name_col: str, drop_gene_names: Optional[List[str]], log_fh=None) -> ad.AnnData:
     if gene_name_col not in adata.var.columns:
         raise SystemExit("ERROR: gene_name_col '{}' not found in adata.var".format(gene_name_col))
@@ -234,9 +254,10 @@ def main():
     roi_cfg = cfg.get("roi", {}) or {}
     cell_ids_txt = roi_cfg.get("cell_ids_txt", None)
     if cell_ids_txt not in (None, ""):
-        roi_ids = set(_read_id_list(Path(cell_ids_txt)))
+        roi_path = _resolve_roi_path(cell_ids_txt)
+        roi_ids = set(_read_id_list(roi_path))
         subset_cells = [c for c in subset_cells if c in roi_ids]
-        _log("[roi] keep by cell_ids_txt -> {} cells".format(len(subset_cells)), log_fh)
+        _log("[roi] cell_ids_txt={} keep -> {} cells".format(roi_path, len(subset_cells)), log_fh)
 
     subset_cfg = cfg.get("subset", {}) or {}
     leiden_key = str(subset_cfg.get("leiden_key", cfg.get("leiden_key_15", "leiden_15")))

@@ -259,3 +259,14 @@ cat("[Info] wrote:", out_all, "\n")
 
 cat("[OK] Done.\n")
 sink()
+
+# Save a lightweight index instead of one combined helper object
+stage_index <- data.frame(
+  stage = names(results),
+  cellchat_rds = file.path(out_dir, paste0("cellchat_", names(results), "_", tag, ".rds")),
+  stringsAsFactors = FALSE
+)
+out_index_csv <- file.path(out_dir, paste0(prefix, ".cellchat_stage_index_", tag, ".csv"))
+write.csv(stage_index, out_index_csv, row.names = FALSE, quote = FALSE)
+cat("[Info] wrote:", out_index_csv, "\n")
+cat("[Done] All stages finished\n")

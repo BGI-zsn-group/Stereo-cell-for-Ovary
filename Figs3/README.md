@@ -218,8 +218,3 @@ Under `result/Figs3/somatic_processing/`:
 - If running downstream processing only, ensure that the input object already contains a valid `sample` column, or provide a fallback `sample_map` in the YAML configuration.
 - Cluster exclusion and cell-type annotation are dataset-specific and may require adjustment for independent datasets.
 
----
-
-## Citation
-
-If you use this code or adapt this workflow in your own work, please cite the associated study and the software packages used in the analysis, including Seurat, Harmony, and scDblFinder.

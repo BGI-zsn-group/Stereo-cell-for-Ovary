@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env Rscript
 # -----------------------------------------------------------------------------
 # Fig5 | Build CellChat objects across oocyte stages + granulosa cell states
@@ -165,7 +164,10 @@ obj_gr$labels <- obj_gr@meta.data[[gc_celltype_col]]
 obj_gr$T <- obj_gr@meta.data[[gc_sample_col]]
 
 if (!is.null(gc_exclude_celltypes) && length(gc_exclude_celltypes) > 0) {
-  obj_gr <- subset(obj_gr, subset = !(labels %in% gc_exclude_celltypes))
+  keep_cells <- rownames(obj_gr@meta.data)[
+    !(as.character(obj_gr@meta.data$labels) %in% as.character(gc_exclude_celltypes))
+  ]
+  obj_gr <- subset(obj_gr, cells = keep_cells)
 }
 
 if (!(oo_stage_col %in% colnames(obj_oo@meta.data))) {
@@ -174,7 +176,10 @@ if (!(oo_stage_col %in% colnames(obj_oo@meta.data))) {
 obj_oo$labels <- obj_oo@meta.data[[oo_stage_col]]
 
 if (!is.null(oocyte_exclude_stages) && length(oocyte_exclude_stages) > 0) {
-  obj_oo <- subset(obj_oo, subset = !(labels %in% oocyte_exclude_stages))
+  keep_cells <- rownames(obj_oo@meta.data)[
+    !(as.character(obj_oo@meta.data$labels) %in% as.character(oocyte_exclude_stages))
+  ]
+  obj_oo <- subset(obj_oo, cells = keep_cells)
 }
 
 obj_merge <- merge(obj_gr, obj_oo)

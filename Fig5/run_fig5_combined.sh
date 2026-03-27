@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -13,19 +12,45 @@ Options:
   -i, --in <combined.yaml>     Combined YAML (default: Fig5/configs/fig5_combined.yaml)
   -m, --module <name>          Module key under `modules` (default: fig5_cellchat_build)
   -s, --script <path>          R script path (default: Fig5/fig5_cellchat_build.R)
-  -o, --out <dir|prefix.rds>   Override out_dir (or derive {out_dir,prefix} from *.rds)
-      --set key=value          Override config (repeatable; supports dot paths)
+
+  --gr-rds <path>              Override GC input RDS (modules.<module>.obj_gr_rds)
+  --oo-rds <path>              Override oocyte input RDS (modules.<module>.obj_oo_rds)
+
+  -o, --out <dir|prefix.rds>   Override output directory; if a *.rds path is given,
+                               derive {out_dir, prefix} from it
+  --prefix <name>              Override output prefix only
+
+  --set key=value              Override config (repeatable; supports dot paths)
   -h, --help                   Show help
 
 Examples:
-  # Build full DB (default)
+  # default run
   bash Fig5/run_fig5_combined.sh
 
-  # Cell-Cell Contact-only variant
-  bash Fig5/run_fig5_combined.sh --set mode=cellcell_contact
+  # override both input RDS paths
+  bash Fig5/run_fig5_combined.sh \
+    --gr-rds data/Fig5/obj_gr_newanno.rds \
+    --oo-rds data/Fig5/oocyte_edit.rds
 
-  # Override inputs
-  bash Fig5/run_fig5_combined.sh --set obj_gr_rds=data/Fig5/obj_gr_newanno.rds --set obj_oo_rds=data/Fig5/oocyte_edit.rds
+  # override output directory
+  bash Fig5/run_fig5_combined.sh \
+    -o results/Fig5/cellchat_debug
+
+  # override both inputs + output dir
+  bash Fig5/run_fig5_combined.sh \
+    -i Fig5/configs/fig5_combined.yaml \
+    --gr-rds /path/to/gc.rds \
+    --oo-rds /path/to/oocyte.rds \
+    -o /path/to/outdir
+
+  # derive out_dir and prefix from an rds-like output path
+  bash Fig5/run_fig5_combined.sh \
+    --gr-rds /path/to/gc.rds \
+    --oo-rds /path/to/oocyte.rds \
+    -o results/Fig5/cellchat/my_run.rds
+
+  # keep generic override support
+  bash Fig5/run_fig5_combined.sh --set mode=cellcell_contact
 USAGE
 }
 
@@ -40,13 +65,19 @@ COMBINED="$COMBINED_DEFAULT"
 MODULE_KEY="$MODULE_DEFAULT"
 SCRIPT="$SCRIPT_DEFAULT"
 OUT_OVERRIDE=""
+PREFIX_OVERRIDE=""
+GR_RDS_OVERRIDE=""
+OO_RDS_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -i|--in) [[ $# -ge 2 ]] || die "Missing value for $1"; COMBINED="$2"; shift 2;;
     -m|--module) [[ $# -ge 2 ]] || die "Missing value for $1"; MODULE_KEY="$2"; shift 2;;
     -s|--script) [[ $# -ge 2 ]] || die "Missing value for $1"; SCRIPT="$2"; shift 2;;
+    --gr-rds) [[ $# -ge 2 ]] || die "Missing value for $1"; GR_RDS_OVERRIDE="$2"; shift 2;;
+    --oo-rds) [[ $# -ge 2 ]] || die "Missing value for $1"; OO_RDS_OVERRIDE="$2"; shift 2;;
     -o|--out) [[ $# -ge 2 ]] || die "Missing value for $1"; OUT_OVERRIDE="$2"; shift 2;;
+    --prefix) [[ $# -ge 2 ]] || die "Missing value for $1"; PREFIX_OVERRIDE="$2"; shift 2;;
     --set)
       [[ $# -ge 2 ]] || die "Missing value for --set"
       [[ -n "$2" ]] || die "Override cannot be empty"
@@ -65,15 +96,15 @@ TMP_CFG="$(mktemp -t fig5_cfg_XXXXXX.yaml)"
 cleanup() { rm -f "$TMP_CFG"; }
 trap cleanup EXIT
 
-"$PYTHON_BIN" - "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "$OUT_OVERRIDE" "${OV_SET[@]}" <<'PY'
+"$PYTHON_BIN" - "$COMBINED" "$MODULE_KEY" "$TMP_CFG" "$OUT_OVERRIDE" "$PREFIX_OVERRIDE" "$GR_RDS_OVERRIDE" "$OO_RDS_OVERRIDE" "${OV_SET[@]}" <<'PY'
 import os, sys
 try:
     import yaml
 except ImportError as e:
     raise SystemExit("ERROR: Python package 'pyyaml' is required. Install with: pip install pyyaml") from e
 
-combined_path, module_key, out_path, out_override = sys.argv[1:5]
-overrides = sys.argv[5:]
+combined_path, module_key, out_path, out_override, prefix_override, gr_rds_override, oo_rds_override = sys.argv[1:8]
+overrides = sys.argv[8:]
 
 with open(combined_path, "r", encoding="utf-8") as f:
     cfg = yaml.safe_load(f) or {}
@@ -97,6 +128,13 @@ def set_by_path(d, path, value):
         cur = cur[p]
     cur[parts[-1]] = value
 
+# Explicit input overrides
+if gr_rds_override:
+    mod["obj_gr_rds"] = gr_rds_override
+if oo_rds_override:
+    mod["obj_oo_rds"] = oo_rds_override
+
+# Output overrides
 if out_override:
     if out_override.endswith(".rds"):
         out_dir = os.path.dirname(out_override) or "."
@@ -105,6 +143,9 @@ if out_override:
         mod["prefix"] = prefix
     else:
         mod["out_dir"] = out_override
+
+if prefix_override:
+    mod["prefix"] = prefix_override
 
 for ov in overrides:
     if not ov:

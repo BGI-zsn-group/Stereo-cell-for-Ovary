@@ -1,18 +1,83 @@
-# Fig. 2 | Two-pass SCTransform + Harmony integration
+# Fig. 2 | Cell cropping and two-pass SCTransform + Harmony integration
 
 ## Overview
 
-This directory contains the code used to reproduce the integration analysis shown in **Fig. 2**. The workflow integrates multiple per-sample Seurat objects using a **two-pass SCTransform + Harmony** strategy and writes a single integrated Seurat object for downstream analyses and figure generation.
+This directory contains the code used to reproduce the analyses presented in **Fig. 2**. The workflow consists of two conceptually distinct components:
 
-The implementation consists of:
+1. **QuPath-based cell cropping**, used to export standardized image crops centered on annotated cells for image-level inspection and documentation.
+2. **Transcriptomic integration**, which combines multiple per-sample Seurat objects using a **two-pass SCTransform + Harmony** strategy and generates a single integrated Seurat object for downstream analyses and figure generation.
 
-- `run_fig2_combined.sh`: recommended entry point; extracts the Fig. 2 module from the combined YAML configuration and runs the integration pipeline.
-- `fig2_harmony_integration.R`: core R implementation of the integration workflow.
-- `configs/fig2_combined.yaml`: combined configuration file; the active module is `modules.fig2_harmony`.
+The image-export step and the transcriptomic integration step are complementary but independent. The former operates on microscopy annotations in QuPath, whereas the latter operates on per-sample Seurat objects in R.
 
-## Input requirements
+Detailed step-by-step operating procedures, including how the QuPath annotations were created and how the image crops were used in the study, are described in the **article protocol**. This repository README focuses on the code structure, required inputs, and reproducible execution of the computational workflow.
 
-The pipeline expects a directory containing **one Seurat object (`.rds`) per sample**.
+---
+
+## Repository contents
+
+- `cell_cropping.groovy`  
+  QuPath Groovy script for exporting fixed-size TIFF crops centered on annotated cells.
+
+- `run_fig2_combined.sh`  
+  Recommended entry point for the integration workflow. This wrapper extracts the Fig. 2 module from the combined YAML configuration and runs the Harmony-based integration pipeline.
+
+- `fig2_harmony_integration.R`  
+  Core R implementation of the transcriptomic integration workflow.
+
+- `configs/fig2_combined.yaml`  
+  Combined configuration file. The active module for this figure is `modules.fig2_harmony`.
+
+---
+
+## Component 1: QuPath-based cell cropping
+
+### Purpose
+
+The QuPath script exports **fixed 200 × 200 pixel TIFF crops** centered on matching annotations. The script standardizes each ROI to a square crop around the annotation centroid and exports the transformed image patch using the current viewer display settings, including gamma correction.
+
+This step is intended for image-level preparation and visualization associated with Fig. 2.
+
+### Script
+
+- `cell_cropping.groovy`
+
+### What the script does
+
+The script:
+
+- checks for an active QuPath image viewer and image;
+- prompts the user for:
+  - output directory,
+  - filename prefix,
+  - z-slice index,
+  - annotation naming pattern (`A1/A2/...` or `1/2/...`);
+- identifies matching annotations;
+- replaces each matched ROI with a centered **200 × 200 pixel square**;
+- applies current viewer display transforms and gamma correction;
+- exports each crop as a TIFF file.
+
+### Outputs
+
+Typical outputs are:
+
+- one TIFF file per matched annotation;
+- file names based on annotation names and the user-specified prefix.
+
+### Note
+
+Because the QuPath interaction includes annotation preparation, viewer settings, and manual choices that depend on the study design, the **full operational procedure is documented in the article protocol rather than repeated here**.
+
+---
+
+## Component 2: Transcriptomic integration
+
+### Purpose
+
+The transcriptomic component integrates multiple per-sample Seurat objects using a **two-pass SCTransform + Harmony** workflow and produces a single integrated Seurat object.
+
+### Input requirements
+
+The integration pipeline expects a directory containing **one Seurat object (`.rds`) per sample**.
 
 Each input object should:
 
@@ -20,9 +85,11 @@ Each input object should:
 - contain an `RNA` assay;
 - use a compatible gene naming scheme across samples.
 
-Sample identifiers are inferred from file names (extension removed) and added to the metadata as `sample`.
+Sample identifiers are inferred from file names (extension removed) and are written to metadata as `sample`.
 
-## Workflow summary
+---
+
+## Integration workflow summary
 
 ### Pass 1
 
@@ -30,11 +97,11 @@ Sample identifiers are inferred from file names (extension removed) and added to
 2. Add sample identifiers to metadata.
 3. Run `SCTransform()` independently for each sample.
 4. Select integration features with `SelectIntegrationFeatures()`.
-5. Exclude ribosomal/mitochondrial and optionally user-specified genes.
+5. Exclude ribosomal/mitochondrial genes and optional user-defined genes.
 6. Merge all samples.
 7. Run `SCTransform()` on the merged object using `residual.features`.
 8. Run PCA, Harmony, neighbor graph construction, clustering, and UMAP.
-9. Remove pre-specified clusters interpreted as contamination or undesired populations.
+9. Remove predefined clusters interpreted as contamination or unwanted populations.
 
 ### Pass 2
 
@@ -45,9 +112,11 @@ Sample identifiers are inferred from file names (extension removed) and added to
 5. Run PCA, Harmony, neighbor graph construction, clustering, and UMAP again.
 6. Save the final integrated Seurat object.
 
+---
+
 ## Outputs
 
-The main output is a single integrated Seurat object:
+The main integration output is a single integrated Seurat object:
 
 - `out` — integrated Seurat object (`.rds`), typically containing:
   - Harmony reduction (`harmony`)
@@ -60,6 +129,8 @@ For reproducibility, the pipeline also writes:
 - `sessionInfo_fig2.txt` — R session and package information
 
 These files are written to the same output directory as the integrated object.
+
+---
 
 ## Recommended usage
 
@@ -87,6 +158,8 @@ bash Fig2/run_fig2_combined.sh \
   --set theta_pass2=1
 ```
 
+---
+
 ## Key configuration fields
 
 The following parameters are read from `modules.fig2_harmony` in `configs/fig2_combined.yaml`.
@@ -110,6 +183,8 @@ The following parameters are read from `modules.fig2_harmony` in `configs/fig2_c
 | `theta_pass2` | Harmony `theta` used in pass 2 |
 | `harmony_vars_pass2` | Batch variable(s) used by Harmony in pass 2 |
 
+---
+
 ## Running the R script directly
 
 The R script expects a **module-level YAML** file containing keys such as `rds_dir`, `out`, and other Fig. 2 parameters at the top level.
@@ -129,6 +204,8 @@ PY
 Rscript Fig2/fig2_harmony_integration.R --config Fig2/configs/fig2_harmony.yaml
 ```
 
+---
+
 ## Software requirements
 
 ### Core requirements
@@ -136,6 +213,7 @@ Rscript Fig2/fig2_harmony_integration.R --config Fig2/configs/fig2_harmony.yaml
 - Bash
 - Python 3
 - R (recommended: R >= 4.2)
+- QuPath (for `cell_cropping.groovy`)
 
 ### Python packages
 
@@ -157,6 +235,8 @@ pip install pyyaml
 - `ggrepel`
 - `yaml`
 
+---
+
 ## Troubleshooting
 
 - **No RDS files found**: check `rds_dir` and `pattern`.
@@ -164,13 +244,16 @@ pip install pyyaml
 - **Missing R package `yaml`**: install it with `install.packages('yaml')`.
 - **Cluster removal error after pass 1**: use the current `fig2_harmony_integration.R`, which removes clusters using Seurat identities rather than unstable expression-based subsetting.
 - **Merge or SCTransform failure**: verify that each input file is a valid Seurat object and that genes are named consistently across samples.
+- **QuPath export produces no files**: verify that matching annotations are present and that the chosen naming pattern matches the annotation names.
+
+---
 
 ## Reproducibility
 
-For each run, the pipeline records both resolved parameters and the R software environment. Users are encouraged to archive:
+For each integration run, the pipeline records both resolved parameters and the R software environment. Users are encouraged to archive:
 
 - the exact YAML used for the run,
 - the generated `params_used_fig2_harmony.yaml`, and
 - `sessionInfo_fig2.txt`.
 
-These files provide sufficient provenance to reproduce the integration settings used in the manuscript.
+For the image-cropping component, readers should refer to the **article protocol** for the full annotation and export procedure used in the manuscript.
